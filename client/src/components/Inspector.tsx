@@ -1,3 +1,4 @@
+import { useState, type AnimationEvent } from "react";
 import { Activity, CheckCircle2, Clock3, Server, WifiOff, Wrench, X } from "lucide-react";
 import type { ServerInfo, ServerTool } from "../types";
 
@@ -15,12 +16,23 @@ const recentActivity = [
 ] as const;
 
 export function Inspector({ isConnected, serverInfo, availableTools, onClose }: InspectorProps) {
+  const [isClosing, setIsClosing] = useState(false);
   const connectionLabel = isConnected ? "Connected" : "Disconnected";
+
+  const handleAnimationEnd = (event: AnimationEvent<HTMLElement>) => {
+    if (isClosing && event.currentTarget === event.target && event.animationName === "inspector-exit") {
+      onClose();
+    }
+  };
 
   return (
     <aside
       aria-label="MCP inspector"
-      className="inspector-panel fixed inset-y-0 right-0 z-10 flex w-full max-w-80 shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-charcoal)] shadow-2xl shadow-black/30 xl:static xl:z-auto xl:w-80 xl:shadow-none"
+      aria-busy={isClosing || undefined}
+      className={`inspector-panel fixed inset-y-0 right-0 z-10 flex w-full max-w-80 shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-charcoal)] shadow-2xl shadow-black/30 xl:static xl:z-auto xl:w-80 xl:shadow-none ${
+        isClosing ? "inspector-panel--closing pointer-events-none" : ""
+      }`}
+      onAnimationEnd={handleAnimationEnd}
     >
       <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-4">
         <div>
@@ -31,7 +43,7 @@ export function Inspector({ isConnected, serverInfo, availableTools, onClose }: 
           aria-label="Close inspector"
           className="inline-flex size-9 items-center justify-center rounded-lg text-[var(--color-taupe)] transition-colors hover:bg-white/5 hover:text-[var(--color-cream)] xl:hidden"
           type="button"
-          onClick={onClose}
+          onClick={() => setIsClosing(true)}
         >
           <X aria-hidden="true" size={17} />
         </button>

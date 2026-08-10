@@ -40,8 +40,24 @@ body {
   }
 }
 
+@keyframes inspector-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(0.75rem);
+  }
+}
+
 .inspector-panel {
   animation: inspector-enter 180ms ease-out;
+}
+
+.inspector-panel--closing {
+  animation: inspector-exit 180ms ease-in forwards;
 }
 
 code,
