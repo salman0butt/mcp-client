@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from "react";
+import { ChatHeader } from "./components/ChatHeader";
+import { Sidebar } from "./components/Sidebar";
 import {
   availableTools,
   initialMessages,
   recentConversations,
   serverInfo,
 } from "./data";
-import type { Conversation, Message, ServerInfo, ServerTool } from "./types";
+import type { Message, ServerInfo, ServerTool } from "./types";
 
 const createId = (prefix: string) =>
   `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString()}`;
@@ -30,7 +32,9 @@ export default function App() {
 
     return normalizedQuery
       ? recentConversations.filter((conversation) =>
-          conversation.title.toLowerCase().includes(normalizedQuery),
+          `${conversation.title} ${conversation.preview}`
+            .toLowerCase()
+            .includes(normalizedQuery),
         )
       : recentConversations;
   }, [searchQuery]);
@@ -125,54 +129,6 @@ export default function App() {
         />
       )}
     </main>
-  );
-}
-
-// Temporary, typed shells: Tasks 3-5 replace these with focused components.
-type SidebarProps = {
-  conversations: Conversation[];
-  searchQuery: string;
-  onSearchChange: (value: string) => void;
-  onNewChat: () => void;
-  onSelectConversation: (conversationId: string) => void;
-};
-
-function Sidebar({ conversations, searchQuery, onSearchChange, onNewChat, onSelectConversation }: SidebarProps) {
-  return (
-    <aside className="w-64 shrink-0 border-r border-[var(--color-border)] p-4">
-      <button type="button" onClick={onNewChat}>New chat</button>
-      <input
-        aria-label="Search conversations"
-        value={searchQuery}
-        onChange={(event) => onSearchChange(event.target.value)}
-      />
-      <nav aria-label="Recent conversations">
-        {conversations.map((conversation) => (
-          <button key={conversation.id} type="button" onClick={() => onSelectConversation(conversation.id)}>
-            {conversation.title}
-          </button>
-        ))}
-      </nav>
-    </aside>
-  );
-}
-
-type ChatHeaderProps = {
-  isConnected: boolean;
-  onToggleConnection: () => void;
-  onToggleInspector: () => void;
-  showInspector: boolean;
-};
-
-function ChatHeader({ isConnected, onToggleConnection, onToggleInspector, showInspector }: ChatHeaderProps) {
-  return (
-    <header className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
-      <span>{isConnected ? "Connected" : "Disconnected"}</span>
-      <div>
-        <button type="button" onClick={onToggleConnection}>Toggle connection</button>
-        <button type="button" onClick={onToggleInspector}>{showInspector ? "Hide inspector" : "Show inspector"}</button>
-      </div>
-    </header>
   );
 }
 
