@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { ChatHeader } from "./components/ChatHeader";
 import { Composer } from "./components/Composer";
 import { ConversationView } from "./components/ConversationView";
+import { Inspector } from "./components/Inspector";
 import { Sidebar } from "./components/Sidebar";
 import {
   availableTools,
@@ -9,7 +10,7 @@ import {
   recentConversations,
   serverInfo,
 } from "./data";
-import type { Message, ServerInfo, ServerTool } from "./types";
+import type { Message } from "./types";
 
 const createId = (prefix: string) =>
   `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString()}`;
@@ -98,7 +99,7 @@ export default function App() {
   };
 
   return (
-    <main className="flex h-screen min-h-screen bg-[var(--color-espresso)] text-[var(--color-cream)]">
+    <main className="flex h-screen min-h-screen overflow-hidden bg-[var(--color-espresso)] text-[var(--color-cream)]">
       <Sidebar
         conversations={filteredConversations}
         searchQuery={searchQuery}
@@ -131,22 +132,5 @@ export default function App() {
         />
       )}
     </main>
-  );
-}
-
-type InspectorProps = {
-  isConnected: boolean;
-  serverInfo: ServerInfo;
-  availableTools: ServerTool[];
-  onClose: () => void;
-};
-
-function Inspector({ isConnected, serverInfo, availableTools, onClose }: InspectorProps) {
-  return (
-    <aside className="w-80 shrink-0 border-l border-[var(--color-border)] p-4">
-      <button type="button" onClick={onClose}>Close inspector</button>
-      <p>{isConnected ? "Connected" : "Disconnected"} to {serverInfo.name}</p>
-      <ul>{availableTools.map((tool) => <li key={tool.name}>{tool.name}</li>)}</ul>
-    </aside>
   );
 }
