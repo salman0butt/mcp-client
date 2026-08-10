@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ChatHeader } from "./components/ChatHeader";
+import { Composer } from "./components/Composer";
+import { ConversationView } from "./components/ConversationView";
 import { Sidebar } from "./components/Sidebar";
 import {
   availableTools,
@@ -96,7 +98,7 @@ export default function App() {
   };
 
   return (
-    <main className="flex min-h-screen bg-[var(--color-espresso)] text-[var(--color-cream)]">
+    <main className="flex h-screen min-h-screen bg-[var(--color-espresso)] text-[var(--color-cream)]">
       <Sidebar
         conversations={filteredConversations}
         searchQuery={searchQuery}
@@ -129,34 +131,6 @@ export default function App() {
         />
       )}
     </main>
-  );
-}
-
-function ConversationView({ messages, isResponding }: Pick<AppConversationProps, "messages" | "isResponding">) {
-  return (
-    <section className="min-h-0 flex-1 overflow-y-auto p-4" aria-label="Conversation">
-      {messages.map((message) => <p key={message.id}>{message.content}</p>)}
-      {isResponding && <p>Searching feedback…</p>}
-    </section>
-  );
-}
-
-type AppConversationProps = { messages: Message[]; isResponding: boolean };
-
-type ComposerProps = {
-  draft: string;
-  onDraftChange: (value: string) => void;
-  onSubmit: () => void;
-  isResponding: boolean;
-  isConnected: boolean;
-};
-
-function Composer({ draft, onDraftChange, onSubmit, isResponding, isConnected }: ComposerProps) {
-  return (
-    <form className="border-t border-[var(--color-border)] p-4" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
-      <textarea aria-label="Message" value={draft} onChange={(event) => onDraftChange(event.target.value)} />
-      <button type="submit" disabled={!draft.trim() || isResponding || !isConnected}>Send</button>
-    </form>
   );
 }
 
