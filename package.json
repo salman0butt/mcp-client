@@ -1,0 +1,21 @@
+{
+  "name": "mcp-client",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc && chmod 755 dist/src/index.js",
+    "start:server": "node dist/src/index.js"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@google/genai": "^2.16.0",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@types/node": "^26.2.0"
+  }
+}
