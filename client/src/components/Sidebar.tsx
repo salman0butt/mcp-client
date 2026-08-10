@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CircleHelp,
   PanelLeftClose,
@@ -9,9 +9,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { Conversation } from "../types";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 
 type SidebarProps = {
   conversations: Conversation[];
+  activeConversationId: string | null;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onNewChat: () => void;
@@ -26,44 +28,90 @@ const toneClasses: Record<Conversation["tone"], string> = {
 
 export function Sidebar({
   conversations,
+  activeConversationId,
   searchQuery,
   onSearchChange,
   onNewChat,
   onSelectConversation,
 }: SidebarProps) {
-  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(
-    conversations[0]?.id,
-  );
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const isNarrow = useMediaQuery("(max-width: 639px)");
+  const drawerToggleRef = useRef<HTMLButtonElement>(null);
+  const newChatRef = useRef<HTMLButtonElement>(null);
+  const isConcealed = isNarrow && !isDrawerOpen;
+
+  const closeDrawer = () => {
+    if (!isNarrow) {
+      return;
+    }
+
+    setIsDrawerOpen(false);
+    drawerToggleRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (isNarrow && isDrawerOpen) {
+      newChatRef.current?.focus();
+    }
+  }, [isDrawerOpen, isNarrow]);
+
+  useEffect(() => {
+    if (!isNarrow || !isDrawerOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDrawer();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDrawerOpen, isNarrow]);
 
   return (
-    <aside
-      className={`fixed inset-y-0 left-0 z-20 flex w-[17rem] flex-col border-r border-[var(--color-border)] bg-[var(--color-charcoal)] p-3 shadow-2xl shadow-black/20 transition-transform sm:static sm:translate-x-0 sm:shadow-none ${
-        isDrawerOpen ? "translate-x-0" : "-translate-x-[calc(100%-3.5rem)]"
-      }`}
-    >
+    <>
       <button
+        ref={drawerToggleRef}
         aria-label={isDrawerOpen ? "Close navigation drawer" : "Open navigation drawer"}
-        className="absolute right-0 top-3 flex size-11 items-center justify-center rounded-l-lg bg-[var(--color-charcoal)] text-[var(--color-taupe)] shadow-lg shadow-black/20 transition-colors hover:text-[var(--color-cream)] sm:hidden"
+        aria-controls="mcp-navigation"
+        aria-expanded={isDrawerOpen}
+        className={`fixed left-3 top-3 z-30 flex size-11 items-center justify-center rounded-lg bg-[var(--color-charcoal)] text-[var(--color-taupe)] shadow-lg shadow-black/20 transition-transform hover:text-[var(--color-cream)] sm:hidden ${
+          isDrawerOpen ? "translate-x-[13.5rem]" : "translate-x-0"
+        }`}
         type="button"
         onClick={() => setIsDrawerOpen((open) => !open)}
       >
         {isDrawerOpen ? <PanelLeftClose aria-hidden="true" size={18} /> : <PanelLeftOpen aria-hidden="true" size={18} />}
       </button>
 
+      <aside
+        id="mcp-navigation"
+        aria-hidden={isConcealed || undefined}
+        inert={isConcealed || undefined}
+        className={`fixed inset-y-0 left-0 z-20 flex w-[17rem] max-w-[calc(100vw-3.5rem)] flex-col border-r border-[var(--color-border)] bg-[var(--color-charcoal)] p-3 shadow-2xl shadow-black/20 transition-transform sm:static sm:max-w-none sm:translate-x-0 sm:shadow-none ${
+          isDrawerOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+
       <div className="flex items-center gap-2 px-2 py-3">
         <span className="flex size-8 items-center justify-center rounded-lg bg-[var(--color-terracotta)] text-[var(--color-espresso)]">
           <Sparkles aria-hidden="true" size={16} strokeWidth={2.5} />
         </span>
         <span className="text-sm font-semibold tracking-wide text-[var(--color-cream)]">
-          Claude Code
+          MCP Client
         </span>
       </div>
 
       <button
+        ref={newChatRef}
         className="mt-3 flex w-full items-center gap-2 rounded-lg bg-[var(--color-terracotta)] px-3 py-2.5 text-sm font-medium text-[var(--color-espresso)] transition-colors hover:bg-[#e48968]"
         type="button"
-        onClick={onNewChat}
+        onClick={() => {
+          onNewChat();
+          closeDrawer();
+        }}
       >
         <MessageSquarePlus aria-hidden="true" size={16} />
         New chat
@@ -105,8 +153,8 @@ export function Sidebar({
                     }`}
                     type="button"
                     onClick={() => {
-                      setActiveConversationId(conversation.id);
                       onSelectConversation(conversation.id);
+                      closeDrawer();
                     }}
                   >
                     <span
@@ -158,6 +206,7 @@ export function Sidebar({
           Help &amp; feedback
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

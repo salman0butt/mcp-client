@@ -64,6 +64,69 @@ export const recentConversations: Conversation[] = [
   },
 ];
 
+export const initialConversationThreads: Record<string, Message[]> = {
+  "conversation-onboarding-feedback": initialMessages,
+  "conversation-release-notes": [
+    {
+      id: "message-release-request",
+      role: "user",
+      content: "Review the linked issues planned for the August release.",
+      timestamp: "9:18 AM",
+    },
+    {
+      id: "message-release-response",
+      role: "assistant",
+      content:
+        "The August release includes 14 linked issues: 11 are complete, two are in review, and one documentation task is still open.",
+      timestamp: "9:19 AM",
+    },
+  ],
+  "conversation-billing-themes": [
+    {
+      id: "message-billing-request",
+      role: "user",
+      content: "What billing questions are customers asking most often?",
+      timestamp: "Yesterday",
+    },
+    {
+      id: "message-billing-response",
+      role: "assistant",
+      content:
+        "The recurring themes are invoice timing, seat adjustments, and where to download tax-compliant receipts.",
+      timestamp: "Yesterday",
+    },
+  ],
+  "conversation-project-health": [
+    {
+      id: "message-project-health-request",
+      role: "user",
+      content: "Check active projects for overdue work.",
+      timestamp: "Mon",
+    },
+    {
+      id: "message-project-health-response",
+      role: "assistant",
+      content: "Three active projects have overdue work, with two blocked by external approvals.",
+      timestamp: "Mon",
+    },
+  ],
+  "conversation-research-summary": [
+    {
+      id: "message-research-request",
+      role: "user",
+      content: "Condense the discovery research thread into decisions and follow-ups.",
+      timestamp: "Aug 6",
+    },
+    {
+      id: "message-research-response",
+      role: "assistant",
+      content:
+        "The team agreed to simplify workspace creation, test guided setup, and revisit invitation status language next week.",
+      timestamp: "Aug 6",
+    },
+  ],
+};
+
 export const availableTools: ServerTool[] = [
   {
     name: "search_feedback",

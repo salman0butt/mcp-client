@@ -1,12 +1,14 @@
-import { useState, type AnimationEvent } from "react";
+import { useEffect, type AnimationEvent } from "react";
 import { Activity, CheckCircle2, Clock3, Server, WifiOff, Wrench, X } from "lucide-react";
 import type { ServerInfo, ServerTool } from "../types";
 
 type InspectorProps = {
   isConnected: boolean;
+  isClosing: boolean;
   serverInfo: ServerInfo;
   availableTools: ServerTool[];
-  onClose: () => void;
+  onRequestClose: () => void;
+  onExited: () => void;
 };
 
 const recentActivity = [
@@ -15,18 +17,34 @@ const recentActivity = [
   { label: "stdio transport ready", time: "10:40 AM", Icon: Clock3, className: "text-[var(--color-taupe)]" },
 ] as const;
 
-export function Inspector({ isConnected, serverInfo, availableTools, onClose }: InspectorProps) {
-  const [isClosing, setIsClosing] = useState(false);
+export function Inspector({
+  isConnected,
+  isClosing,
+  serverInfo,
+  availableTools,
+  onRequestClose,
+  onExited,
+}: InspectorProps) {
   const connectionLabel = isConnected ? "Connected" : "Disconnected";
 
+  useEffect(() => {
+    if (!isClosing) {
+      return;
+    }
+
+    const exitFallback = window.setTimeout(onExited, 220);
+    return () => window.clearTimeout(exitFallback);
+  }, [isClosing, onExited]);
+
   const handleAnimationEnd = (event: AnimationEvent<HTMLElement>) => {
-    if (isClosing && event.currentTarget === event.target && event.animationName === "inspector-exit") {
-      onClose();
+    if (isClosing && event.currentTarget === event.target) {
+      onExited();
     }
   };
 
   return (
     <aside
+      id="mcp-inspector"
       aria-label="MCP inspector"
       aria-busy={isClosing || undefined}
       className={`inspector-panel fixed inset-y-0 right-0 z-10 flex w-full max-w-80 shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-charcoal)] shadow-2xl shadow-black/30 xl:static xl:z-auto xl:w-80 xl:shadow-none ${
@@ -43,7 +61,7 @@ export function Inspector({ isConnected, serverInfo, availableTools, onClose }: 
           aria-label="Close inspector"
           className="inline-flex size-9 items-center justify-center rounded-lg text-[var(--color-taupe)] transition-colors hover:bg-white/5 hover:text-[var(--color-cream)] xl:hidden"
           type="button"
-          onClick={() => setIsClosing(true)}
+          onClick={onRequestClose}
         >
           <X aria-hidden="true" size={17} />
         </button>

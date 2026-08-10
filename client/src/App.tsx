@@ -6,10 +6,11 @@ import { Inspector } from "./components/Inspector";
 import { Sidebar } from "./components/Sidebar";
 import {
   availableTools,
-  initialMessages,
+  initialConversationThreads,
   recentConversations,
   serverInfo,
 } from "./data";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import type { Message } from "./types";
 
 const createId = (prefix: string) =>
@@ -22,13 +23,22 @@ const currentTime = () =>
   }).format(new Date());
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const isDesktop = useMediaQuery("(min-width: 1280px)");
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    recentConversations[0]?.id ?? null,
+  );
+  const [conversationThreads, setConversationThreads] = useState(initialConversationThreads);
+  const [newChatMessages, setNewChatMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [showInspector, setShowInspector] = useState(true);
+  const [showInspector, setShowInspector] = useState(isDesktop);
+  const [isInspectorMounted, setIsInspectorMounted] = useState(isDesktop);
   const [isConnected, setIsConnected] = useState(true);
   const [isResponding, setIsResponding] = useState(false);
   const conversationGeneration = useRef(0);
+  const messages = activeConversationId
+    ? (conversationThreads[activeConversationId] ?? [])
+    : newChatMessages;
 
   const filteredConversations = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -42,6 +52,21 @@ export default function App() {
       : recentConversations;
   }, [searchQuery]);
 
+  const updateMessages = (
+    conversationId: string | null,
+    update: (currentMessages: Message[]) => Message[],
+  ) => {
+    if (conversationId) {
+      setConversationThreads((currentThreads) => ({
+        ...currentThreads,
+        [conversationId]: update(currentThreads[conversationId] ?? []),
+      }));
+      return;
+    }
+
+    setNewChatMessages(update);
+  };
+
   const handleSend = () => {
     const content = draft.trim();
 
@@ -51,8 +76,9 @@ export default function App() {
 
     const timestamp = currentTime();
     const requestGeneration = conversationGeneration.current;
+    const requestConversationId = activeConversationId;
 
-    setMessages((currentMessages) => [
+    updateMessages(requestConversationId, (currentMessages) => [
       ...currentMessages,
       {
         id: createId("message"),
@@ -69,7 +95,7 @@ export default function App() {
         return;
       }
 
-      setMessages((currentMessages) => [
+      updateMessages(requestConversationId, (currentMessages) => [
         ...currentMessages,
         {
           id: createId("message"),
@@ -94,8 +120,26 @@ export default function App() {
 
   const handleNewChat = () => {
     conversationGeneration.current += 1;
-    setMessages([]);
+    setActiveConversationId(null);
+    setNewChatMessages([]);
+    setDraft("");
     setIsResponding(false);
+  };
+
+  const handleSelectConversation = (conversationId: string) => {
+    conversationGeneration.current += 1;
+    setActiveConversationId(conversationId);
+    setIsResponding(false);
+  };
+
+  const handleToggleInspector = () => {
+    if (showInspector) {
+      setShowInspector(false);
+      return;
+    }
+
+    setIsInspectorMounted(true);
+    setShowInspector(true);
   };
 
   return (
@@ -103,15 +147,16 @@ export default function App() {
       <Sidebar
         conversations={filteredConversations}
         searchQuery={searchQuery}
+        activeConversationId={activeConversationId}
         onSearchChange={setSearchQuery}
         onNewChat={handleNewChat}
-        onSelectConversation={() => undefined}
+        onSelectConversation={handleSelectConversation}
       />
       <section className="flex min-w-0 flex-1 flex-col">
         <ChatHeader
           isConnected={isConnected}
           onToggleConnection={() => setIsConnected((connected) => !connected)}
-          onToggleInspector={() => setShowInspector((visible) => !visible)}
+          onToggleInspector={handleToggleInspector}
           showInspector={showInspector}
         />
         <ConversationView messages={messages} isResponding={isResponding} />
@@ -123,12 +168,14 @@ export default function App() {
           isConnected={isConnected}
         />
       </section>
-      {showInspector && (
+      {isInspectorMounted && (
         <Inspector
+          isClosing={!showInspector}
           isConnected={isConnected}
           serverInfo={serverInfo}
           availableTools={availableTools}
-          onClose={() => setShowInspector(false)}
+          onRequestClose={() => setShowInspector(false)}
+          onExited={() => setIsInspectorMounted(false)}
         />
       )}
     </main>

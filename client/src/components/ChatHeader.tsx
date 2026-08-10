@@ -16,7 +16,7 @@ export function ChatHeader({
   const connectionLabel = isConnected ? "Connected" : "Disconnected";
 
   return (
-    <header className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-espresso)] px-4 sm:px-6">
+    <header className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-espresso)] pl-16 pr-4 sm:px-6">
       <div className="min-w-0">
         <h1 className="truncate text-sm font-semibold text-[var(--color-cream)]">MCP Client</h1>
         <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-taupe)]">
@@ -42,7 +42,8 @@ export function ChatHeader({
         </button>
         <button
           aria-label={showInspector ? "Hide inspector" : "Show inspector"}
-          aria-pressed={showInspector}
+          aria-controls="mcp-inspector"
+          aria-expanded={showInspector}
           className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--color-taupe)] transition-colors hover:bg-white/5 hover:text-[var(--color-cream)]"
           type="button"
           onClick={onToggleInspector}
