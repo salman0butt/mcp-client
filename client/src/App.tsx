@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   availableTools,
   initialMessages,
@@ -23,6 +23,7 @@ export default function App() {
   const [showInspector, setShowInspector] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
   const [isResponding, setIsResponding] = useState(false);
+  const conversationGeneration = useRef(0);
 
   const filteredConversations = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -42,6 +43,7 @@ export default function App() {
     }
 
     const timestamp = currentTime();
+    const requestGeneration = conversationGeneration.current;
 
     setMessages((currentMessages) => [
       ...currentMessages,
@@ -56,6 +58,10 @@ export default function App() {
     setIsResponding(true);
 
     window.setTimeout(() => {
+      if (requestGeneration !== conversationGeneration.current) {
+        return;
+      }
+
       setMessages((currentMessages) => [
         ...currentMessages,
         {
@@ -79,13 +85,19 @@ export default function App() {
     }, 600);
   };
 
+  const handleNewChat = () => {
+    conversationGeneration.current += 1;
+    setMessages([]);
+    setIsResponding(false);
+  };
+
   return (
     <main className="flex min-h-screen bg-[var(--color-espresso)] text-[var(--color-cream)]">
       <Sidebar
         conversations={filteredConversations}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onNewChat={() => setMessages([])}
+        onNewChat={handleNewChat}
         onSelectConversation={() => undefined}
       />
       <section className="flex min-w-0 flex-1 flex-col">
