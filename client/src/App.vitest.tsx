@@ -1,9 +1,42 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import App from "./App";
+import { connect, disconnect, getStatus } from "./api/client";
 import { ConversationView } from "./components/ConversationView";
 import type { Message } from "./types";
+
+vi.mock("./api/client", () => ({
+  getStatus: vi.fn(),
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+}));
+
+const disconnectedStatus = {
+  connected: false,
+  serverType: null,
+  serverPath: null,
+  serverName: null,
+  transport: null,
+  model: "gemini-2.5-flash",
+  tools: [],
+};
+
+const connectedStatus = {
+  connected: true,
+  serverType: "remote" as const,
+  serverPath: "https://mcp.example.com",
+  serverName: "Example MCP",
+  transport: "streamable-http" as const,
+  model: "gemini-2.5-flash",
+  tools: [
+    {
+      name: "lookup_customer",
+      description: "Look up a customer by account ID.",
+      inputSchema: { type: "object" },
+    },
+  ],
+};
 
 type MediaPreferences = {
   desktop?: boolean;
@@ -41,6 +74,12 @@ function finishInspectorExit(inspector: HTMLElement) {
 afterEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
+});
+
+beforeEach(() => {
+  vi.mocked(getStatus).mockResolvedValue(disconnectedStatus);
+  vi.mocked(connect).mockResolvedValue(connectedStatus);
+  vi.mocked(disconnect).mockResolvedValue(disconnectedStatus);
 });
 
 describe("responsive workspace", () => {
@@ -187,5 +226,63 @@ describe("inspector lifecycle", () => {
     await waitFor(() =>
       expect(screen.queryByLabelText("MCP inspector")).not.toBeInTheDocument(),
     );
+  });
+});
+
+describe("live MCP connection", () => {
+  test("hydrates the inspector with API server metadata and tools on mount", async () => {
+    useMediaPreferences({ desktop: true });
+    vi.mocked(getStatus).mockResolvedValue(connectedStatus);
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Example MCP")).toBeInTheDocument());
+    expect(screen.getByText("https://mcp.example.com")).toBeInTheDocument();
+    expect(screen.getByText("lookup_customer")).toBeInTheDocument();
+    expect(screen.getByText("Look up a customer by account ID.")).toBeInTheDocument();
+  });
+
+  test("keeps demo content available and reports an unavailable API", async () => {
+    useMediaPreferences({ desktop: true });
+    vi.mocked(getStatus).mockRejectedValue(new Error("Network failed"));
+
+    render(<App />);
+
+    expect(screen.getByText(/I found 18 recent feedback items/)).toBeInTheDocument();
+    expect(
+      await screen.findByText("API unavailable — start the API server to connect."),
+    ).toBeInTheDocument();
+  });
+
+  test("submits a remote server draft and renders the connected server", async () => {
+    useMediaPreferences({ desktop: true });
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.selectOptions(screen.getByLabelText("Transport"), "remote");
+    await user.clear(screen.getByLabelText("Server path"));
+    await user.type(screen.getByLabelText("Server path"), "https://mcp.example.com");
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(screen.getByText("Example MCP")).toBeInTheDocument());
+    expect(connect).toHaveBeenCalledWith({
+      serverType: "remote",
+      serverPath: "https://mcp.example.com",
+    });
+  });
+
+  test("disconnects without removing the seeded conversation", async () => {
+    useMediaPreferences({ desktop: true });
+    vi.mocked(getStatus).mockResolvedValue(connectedStatus);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() => expect(screen.getAllByText("Disconnected")).toHaveLength(3));
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(screen.getByText(/I found 18 recent feedback items/)).toBeInTheDocument();
   });
 });

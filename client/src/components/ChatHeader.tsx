@@ -2,14 +2,20 @@ import { PanelRightClose, PanelRightOpen, Plug, Unplug } from "lucide-react";
 
 type ChatHeaderProps = {
   isConnected: boolean;
-  onToggleConnection: () => void;
+  model: string;
+  isConnecting: boolean;
+  onManageConnection: () => void;
+  onDisconnect: () => void;
   onToggleInspector: () => void;
   showInspector: boolean;
 };
 
 export function ChatHeader({
   isConnected,
-  onToggleConnection,
+  model,
+  isConnecting,
+  onManageConnection,
+  onDisconnect,
   onToggleInspector,
   showInspector,
 }: ChatHeaderProps) {
@@ -26,7 +32,7 @@ export function ChatHeader({
           />
           <span>{connectionLabel}</span>
           <span aria-hidden="true">·</span>
-          <span className="truncate">gemini-2.5-flash</span>
+          <span className="truncate">{model}</span>
         </div>
       </div>
 
@@ -35,10 +41,11 @@ export function ChatHeader({
           aria-label={isConnected ? "Disconnect MCP server" : "Connect MCP server"}
           className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--color-taupe)] transition-colors hover:bg-white/5 hover:text-[var(--color-cream)]"
           type="button"
-          onClick={onToggleConnection}
+          disabled={isConnecting}
+          onClick={isConnected ? onDisconnect : onManageConnection}
         >
           {isConnected ? <Unplug aria-hidden="true" size={15} /> : <Plug aria-hidden="true" size={15} />}
-          <span className="hidden sm:inline">{isConnected ? "Disconnect" : "Connect"}</span>
+          <span className="hidden sm:inline">{isConnecting ? "Connecting…" : isConnected ? "Disconnect" : "Connect"}</span>
         </button>
         <button
           aria-label={showInspector ? "Hide inspector" : "Show inspector"}

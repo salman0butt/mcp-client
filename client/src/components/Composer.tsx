@@ -7,6 +7,7 @@ type ComposerProps = {
   onSubmit: () => void;
   isResponding: boolean;
   isConnected: boolean;
+  model: string;
 };
 
 export function Composer({
@@ -15,6 +16,7 @@ export function Composer({
   onSubmit,
   isResponding,
   isConnected,
+  model,
 }: ComposerProps) {
   const canSubmit = Boolean(draft.trim()) && !isResponding;
 
@@ -77,11 +79,11 @@ export function Composer({
           <div className="flex items-center gap-2">
             <span className="hidden text-xs text-[var(--color-taupe)] sm:inline">Model</span>
             <button
-              aria-label="Selected model: gemini-2.5-flash"
+              aria-label={`Selected model: ${model}`}
               className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-[var(--color-taupe)] transition-colors hover:bg-white/5 hover:text-[var(--color-cream)]"
               type="button"
             >
-              gemini-2.5-flash
+              {model}
               <ChevronDown aria-hidden="true" size={14} />
             </button>
             <button

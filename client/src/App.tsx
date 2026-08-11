@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { connect, disconnect, getStatus } from "./api/client";
 import { ChatHeader } from "./components/ChatHeader";
 import { Composer } from "./components/Composer";
 import { ConversationView } from "./components/ConversationView";
@@ -9,9 +10,26 @@ import {
   initialConversationThreads,
   recentConversations,
   serverInfo,
+  serverInfoFromApiStatus,
+  serverToolsFromApiStatus,
 } from "./data";
 import { useMediaQuery } from "./hooks/useMediaQuery";
-import type { Message } from "./types";
+import type { ApiStatus, ConnectionDraft, ConnectionError, Message } from "./types";
+
+const disconnectedStatus: ApiStatus = {
+  connected: false,
+  serverType: null,
+  serverPath: null,
+  serverName: null,
+  transport: null,
+  model: "gemini-2.5-flash",
+  tools: [],
+};
+
+const initialConnectionDraft: ConnectionDraft = {
+  serverType: "local",
+  serverPath: "",
+};
 
 const createId = (prefix: string) =>
   `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString()}`;
@@ -33,12 +51,77 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showInspector, setShowInspector] = useState(isDesktop);
   const [isInspectorMounted, setIsInspectorMounted] = useState(isDesktop);
-  const [isConnected, setIsConnected] = useState(true);
+  const [apiStatus, setApiStatus] = useState<ApiStatus>(disconnectedStatus);
+  const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft>(initialConnectionDraft);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<ConnectionError | null>(null);
   const [isResponding, setIsResponding] = useState(false);
   const conversationGeneration = useRef(0);
   const messages = activeConversationId
     ? (conversationThreads[activeConversationId] ?? [])
     : newChatMessages;
+  const isConnected = apiStatus.connected;
+  const inspectorServerInfo = isConnected ? serverInfoFromApiStatus(apiStatus) : serverInfo;
+  const inspectorTools = isConnected ? serverToolsFromApiStatus(apiStatus) : availableTools;
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    getStatus()
+      .then((status) => {
+        if (!isCurrent) return;
+        setApiStatus(status);
+        if (status.serverType && status.serverPath) {
+          setConnectionDraft({ serverType: status.serverType, serverPath: status.serverPath });
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setConnectionError({ message: "API unavailable — start the API server to connect." });
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  const handleConnect = async () => {
+    if (!connectionDraft.serverPath.trim()) {
+      setConnectionError({ message: "Enter a server path or URL to connect." });
+      return;
+    }
+
+    setIsConnecting(true);
+    setConnectionError(null);
+    try {
+      const status = await connect({
+        serverType: connectionDraft.serverType,
+        serverPath: connectionDraft.serverPath.trim(),
+      });
+      setApiStatus(status);
+      setConnectionDraft({
+        serverType: status.serverType ?? connectionDraft.serverType,
+        serverPath: status.serverPath ?? connectionDraft.serverPath.trim(),
+      });
+    } catch (error) {
+      setConnectionError({ message: error instanceof Error ? error.message : "Unable to connect to the MCP server." });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setIsConnecting(true);
+    setConnectionError(null);
+    try {
+      setApiStatus(await disconnect());
+    } catch (error) {
+      setConnectionError({ message: error instanceof Error ? error.message : "Unable to disconnect from the MCP server." });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
 
   const filteredConversations = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -155,7 +238,13 @@ export default function App() {
       <section className="flex min-w-0 flex-1 flex-col">
         <ChatHeader
           isConnected={isConnected}
-          onToggleConnection={() => setIsConnected((connected) => !connected)}
+          model={apiStatus.model}
+          isConnecting={isConnecting}
+          onManageConnection={() => {
+            setIsInspectorMounted(true);
+            setShowInspector(true);
+          }}
+          onDisconnect={handleDisconnect}
           onToggleInspector={handleToggleInspector}
           showInspector={showInspector}
         />
@@ -166,14 +255,22 @@ export default function App() {
           onSubmit={handleSend}
           isResponding={isResponding}
           isConnected={isConnected}
+          model={apiStatus.model}
         />
       </section>
       {isInspectorMounted && (
         <Inspector
           isClosing={!showInspector}
           isConnected={isConnected}
-          serverInfo={serverInfo}
-          availableTools={availableTools}
+          apiStatus={apiStatus}
+          connectionDraft={connectionDraft}
+          isConnecting={isConnecting}
+          connectionError={connectionError}
+          serverInfo={inspectorServerInfo}
+          availableTools={inspectorTools}
+          onDraftChange={setConnectionDraft}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
           onRequestClose={() => setShowInspector(false)}
           onExited={() => setIsInspectorMounted(false)}
         />

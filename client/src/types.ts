@@ -1,3 +1,5 @@
+import type { ApiStatus as ApiClientStatus, ServerType as ApiServerType } from "./api/types";
+
 export type MessageRole = "user" | "assistant";
 export type ToolCallStatus = "running" | "success" | "error";
 
@@ -38,4 +40,16 @@ export interface ServerInfo {
   path: string;
   transport: string;
   version: string;
+}
+
+export type ServerType = ApiServerType;
+export type ApiStatus = ApiClientStatus;
+
+export interface ConnectionDraft {
+  serverType: ServerType;
+  serverPath: string;
+}
+
+export interface ConnectionError {
+  message: string;
 }

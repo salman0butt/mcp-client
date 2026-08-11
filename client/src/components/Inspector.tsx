@@ -1,12 +1,19 @@
-import { useEffect, type AnimationEvent } from "react";
+import { useEffect, type AnimationEvent, type FormEvent } from "react";
 import { Activity, CheckCircle2, Clock3, Server, WifiOff, Wrench, X } from "lucide-react";
-import type { ServerInfo, ServerTool } from "../types";
+import type { ApiStatus, ConnectionDraft, ConnectionError, ServerInfo, ServerTool } from "../types";
 
 type InspectorProps = {
   isConnected: boolean;
+  apiStatus: ApiStatus;
+  connectionDraft: ConnectionDraft;
+  isConnecting: boolean;
+  connectionError: ConnectionError | null;
   isClosing: boolean;
   serverInfo: ServerInfo;
   availableTools: ServerTool[];
+  onDraftChange: (draft: ConnectionDraft) => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
   onRequestClose: () => void;
   onExited: () => void;
 };
@@ -19,13 +26,27 @@ const recentActivity = [
 
 export function Inspector({
   isConnected,
+  apiStatus,
+  connectionDraft,
+  isConnecting,
+  connectionError,
   isClosing,
   serverInfo,
   availableTools,
+  onDraftChange,
+  onConnect,
+  onDisconnect,
   onRequestClose,
   onExited,
 }: InspectorProps) {
   const connectionLabel = isConnected ? "Connected" : "Disconnected";
+  const guidanceId = "connection-guidance";
+  const errorId = "connection-error";
+
+  const handleConnect = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onConnect();
+  };
 
   useEffect(() => {
     if (!isClosing) {
@@ -68,6 +89,50 @@ export function Inspector({
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+        <section aria-labelledby="connect-heading" className="rounded-xl border border-[var(--color-border)] bg-[var(--color-espresso)] p-4">
+          <h2 id="connect-heading" className="text-sm font-semibold text-[var(--color-cream)]">Connection</h2>
+          <form className="mt-3 space-y-3" onSubmit={handleConnect}>
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-cream)]" htmlFor="server-transport">Transport</label>
+              <select
+                id="server-transport"
+                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-charcoal)] px-3 py-2 text-sm text-[var(--color-cream)] outline-none focus:border-[var(--color-terracotta)]"
+                disabled={isConnecting}
+                value={connectionDraft.serverType}
+                onChange={(event) => onDraftChange({ ...connectionDraft, serverType: event.target.value as ConnectionDraft["serverType"] })}
+              >
+                <option value="local">Local</option>
+                <option value="remote">Remote</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-cream)]" htmlFor="server-path">Server path</label>
+              <input
+                id="server-path"
+                aria-describedby={`${guidanceId}${connectionError ? ` ${errorId}` : ""}`}
+                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-charcoal)] px-3 py-2 text-sm text-[var(--color-cream)] outline-none placeholder:text-[var(--color-taupe)] focus:border-[var(--color-terracotta)]"
+                disabled={isConnecting}
+                placeholder={connectionDraft.serverType === "local" ? "./server.js" : "https://example.com/mcp"}
+                value={connectionDraft.serverPath}
+                onChange={(event) => onDraftChange({ ...connectionDraft, serverPath: event.target.value })}
+              />
+              <p id={guidanceId} className="mt-1 text-xs leading-5 text-[var(--color-taupe)]">
+                {connectionDraft.serverType === "local"
+                  ? "Use a local .js or .py server path."
+                  : "Use the remote server’s streamable HTTP URL."}
+              </p>
+              {connectionError && <p id={errorId} role="alert" className="mt-2 text-xs text-[var(--color-terracotta)]">{connectionError.message}</p>}
+            </div>
+            <div className="flex gap-2">
+              <button className="rounded-lg bg-[var(--color-terracotta)] px-3 py-2 text-xs font-semibold text-[var(--color-espresso)] disabled:cursor-not-allowed disabled:opacity-45" disabled={isConnecting} type="submit">
+                {isConnecting ? "Connecting…" : "Connect"}
+              </button>
+              <button className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs font-semibold text-[var(--color-cream)] disabled:cursor-not-allowed disabled:opacity-45" disabled={!isConnected || isConnecting} type="button" onClick={onDisconnect}>
+                Disconnect
+              </button>
+            </div>
+          </form>
+        </section>
         <section aria-labelledby="connection-heading" className="rounded-xl border border-[var(--color-border)] bg-[var(--color-espresso)] p-4">
           <div className="flex items-start gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[var(--color-terracotta)]">
@@ -91,6 +156,7 @@ export function Inspector({
             <ConnectionDetail label="Path" value={serverInfo.path} mono />
             <ConnectionDetail label="Transport" value={serverInfo.transport} />
             <ConnectionDetail label="Version" value={serverInfo.version} />
+            {apiStatus.serverType && <ConnectionDetail label="Type" value={apiStatus.serverType} />}
           </dl>
         </section>
 
