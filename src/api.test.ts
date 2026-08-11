@@ -49,6 +49,80 @@ test("health returns an ok response without a connection", async () => {
     expect(await response.json()).toEqual({ ok: true });
 });
 
+test("accepts both Vite loopback development origins", async () => {
+    for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
+        const response = await request(createClient(), "/api/health", {
+            headers: { origin },
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+    }
+});
+
+test("rejects a hostile Origin before a mutation reaches the MCP client", async () => {
+    let cleanupCalls = 0;
+    let connectCalls = 0;
+    const client = createClient({ ...disconnectedStatus });
+    client.cleanup = async () => { cleanupCalls += 1; };
+    client.connectToServer = async () => {
+        connectCalls += 1;
+        return disconnectedStatus;
+    };
+
+    const response = await request(client, "/api/connect", {
+        method: "POST",
+        headers: {
+            origin: "https://evil.example.test",
+            "content-type": "application/json",
+        },
+        body: JSON.stringify({ serverType: "remote", serverPath: "https://mcp.example.test" }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Origin is not allowed" });
+    expect(cleanupCalls).toBe(0);
+    expect(connectCalls).toBe(0);
+});
+
+test("allows originless CLI mutations and leaves replacement cleanup to MCPClient", async () => {
+    let cleanupCalls = 0;
+    let connectCalls = 0;
+    const client = createClient({ ...disconnectedStatus });
+    client.cleanup = async () => { cleanupCalls += 1; };
+    client.connectToServer = async () => {
+        connectCalls += 1;
+        return disconnectedStatus;
+    };
+
+    const response = await request(client, "/api/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ serverType: "remote", serverPath: "https://mcp.example.test" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(cleanupCalls).toBe(0);
+    expect(connectCalls).toBe(1);
+});
+
+test("mutations require an application/json content type", async () => {
+    for (const [path, body] of [
+        ["/api/connect", { serverType: "remote", serverPath: "https://mcp.example.test" }],
+        ["/api/disconnect", {}],
+        ["/api/chat", { message: "hello" }],
+    ] as const) {
+        const response = await request(createClient(), path, {
+            method: "POST",
+            headers: { "content-type": "text/plain" },
+            body: JSON.stringify(body),
+        });
+
+        expect(response.status).toBe(415);
+        expect(await response.json()).toEqual({ error: "Content-Type must be application/json" });
+    }
+});
+
 test("chat rejects a blank message before opening an event stream", async () => {
     const response = await request(createClient(), "/api/chat", {
         method: "POST",
@@ -102,6 +176,44 @@ test("chat returns conflict when no MCP server is connected", async () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "MCP server is not connected" });
+});
+
+test("chat streams service events and closes after completion", async () => {
+    const connectedStatus = { ...disconnectedStatus, connected: true };
+    const client = createClient(connectedStatus);
+    client.streamQuery = async function* () {
+        yield { type: "assistant-text", text: "hello" };
+        yield { type: "complete", text: "hello" };
+    };
+
+    const response = await request(client, "/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "hello" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(await response.text()).toBe(
+        "event: assistant-text\ndata: {\"type\":\"assistant-text\",\"text\":\"hello\"}\n\n" +
+        "event: complete\ndata: {\"type\":\"complete\",\"text\":\"hello\"}\n\n"
+    );
+});
+
+test("chat turns an un-aborted stream failure into an error event", async () => {
+    const connectedStatus = { ...disconnectedStatus, connected: true };
+    const client = createClient(connectedStatus);
+    client.streamQuery = async function* () {
+        throw new Error("model failed");
+    };
+
+    const response = await request(client, "/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "hello" }),
+    });
+
+    expect(await response.text()).toBe("event: error\ndata: {\"message\":\"Chat stream failed\"}\n\n");
 });
 
 test("formats a named server-sent event with JSON data and a blank line", () => {

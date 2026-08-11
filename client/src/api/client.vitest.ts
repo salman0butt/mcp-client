@@ -40,6 +40,26 @@ describe("parseSseStream", () => {
       { type: "error", message: "Chat stream failed" },
     ]);
   });
+
+  it("keeps the SSE framing type when a payload includes a type field", async () => {
+    const events: ApiStreamEvent[] = [];
+
+    await parseSseStream(
+      streamFromChunks(["event: assistant-text\ndata: {\"type\":\"error\",\"text\":\"hello\"}\n\n"]),
+      (event) => events.push(event),
+    );
+
+    expect(events).toEqual([{ type: "assistant-text", text: "hello" }]);
+  });
+
+  it("rejects a non-object SSE payload", async () => {
+    await expect(
+      parseSseStream(
+        streamFromChunks(["event: assistant-text\ndata: \"hello\"\n\n"]),
+        () => {},
+      ),
+    ).rejects.toThrow("SSE payload must be a JSON object");
+  });
 });
 
 describe("getStatus", () => {

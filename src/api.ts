@@ -4,7 +4,10 @@ import { pathToFileURL } from "node:url";
 import { MCPClient } from "./mcpClient.js";
 
 const MAX_BODY_BYTES = 1_048_576;
-const VITE_DEV_ORIGIN = "http://localhost:5173";
+const VITE_DEV_ORIGINS = new Set([
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]);
 
 export interface ConnectRequest {
     serverType: "local" | "remote";
@@ -40,18 +43,22 @@ export function validateConnectPayload(value: unknown): ConnectRequest {
 
 export function createApiServer(client: MCPClient): http.Server {
     return http.createServer(async (request, response) => {
-        setCorsHeaders(request, response);
-
-        if (request.method === "OPTIONS") {
-            response.writeHead(204, {
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-            });
-            response.end();
-            return;
-        }
-
         try {
+            authorizeOrigin(request, response);
+
+            if (request.method === "OPTIONS") {
+                response.writeHead(204, {
+                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type",
+                });
+                response.end();
+                return;
+            }
+
+            if (request.method === "POST") {
+                requireJsonContentType(request);
+            }
+
             if (request.method === "GET" && request.url === "/api/health") {
                 sendJson(response, 200, { ok: true });
                 return;
@@ -62,7 +69,6 @@ export function createApiServer(client: MCPClient): http.Server {
             }
             if (request.method === "POST" && request.url === "/api/connect") {
                 const payload = validateConnectPayload(await readJsonBody(request));
-                await client.cleanup();
                 await client.connectToServer(payload.serverPath, payload.serverType);
                 sendJson(response, 200, client.getStatus());
                 return;
@@ -84,14 +90,25 @@ export function createApiServer(client: MCPClient): http.Server {
                     "Cache-Control": "no-cache",
                     Connection: "keep-alive",
                 });
+                const abortController = new AbortController();
+                const abortOnResponseClose = () => abortController.abort();
+                response.once("close", abortOnResponseClose);
                 try {
-                    for await (const event of client.streamQuery(message)) {
+                    for await (const event of client.streamQuery(message, abortController.signal)) {
+                        if (abortController.signal.aborted) {
+                            break;
+                        }
                         response.write(formatSseEvent(event.type, event));
                     }
                 } catch {
-                    response.write(formatSseEvent("error", { message: "Chat stream failed" }));
+                    if (!abortController.signal.aborted && !response.destroyed) {
+                        response.write(formatSseEvent("error", { message: "Chat stream failed" }));
+                    }
                 } finally {
-                    response.end();
+                    response.off("close", abortOnResponseClose);
+                    if (!response.writableEnded) {
+                        response.end();
+                    }
                 }
                 return;
             }
@@ -160,9 +177,22 @@ function getMessage(value: unknown): string {
     return value.message.trim();
 }
 
-function setCorsHeaders(request: http.IncomingMessage, response: http.ServerResponse): void {
-    if (request.headers.origin === VITE_DEV_ORIGIN) {
-        response.setHeader("Access-Control-Allow-Origin", VITE_DEV_ORIGIN);
+function authorizeOrigin(request: http.IncomingMessage, response: http.ServerResponse): void {
+    const origin = request.headers.origin;
+    if (!origin) {
+        return;
+    }
+    if (!VITE_DEV_ORIGINS.has(origin)) {
+        throw new RequestError(403, "Origin is not allowed");
+    }
+    response.setHeader("Access-Control-Allow-Origin", origin);
+}
+
+function requireJsonContentType(request: http.IncomingMessage): void {
+    const contentType = request.headers["content-type"];
+    const mediaType = Array.isArray(contentType) ? contentType[0] : contentType;
+    if (mediaType?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
+        throw new RequestError(415, "Content-Type must be application/json");
     }
 }
 

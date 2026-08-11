@@ -9,11 +9,6 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
 import { toGeminiFunctionDeclaration } from "./tooling.js";
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-if (!GOOGLE_API_KEY) {
-    throw new Error("GOOGLE_API_KEY is not set");
-}
-
 type ServerType = "local" | "remote";
 type MCPTransport = StdioClientTransport | StreamableHTTPClientTransport;
 
@@ -42,7 +37,7 @@ export type MCPStreamEvent =
 
 export class MCPClient {
     private mcp: Client;
-    private gemini: GoogleGenAI;
+    private gemini: GoogleGenAI | null = null;
     private model: string;
     private transport: MCPTransport | null = null;
     private tools: MCPTool[] = [];
@@ -51,7 +46,6 @@ export class MCPClient {
     private serverName: string | null = null;
 
     constructor() {
-        this.gemini = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
         this.model = process.env.LLM_MODEL || "gemini-2.5-flash";
         this.mcp = new Client({ name: "cg-mcp-client", version: "1.0.0" });
     }
@@ -94,7 +88,11 @@ export class MCPClient {
         this.transport = transport;
         try {
             await this.mcp.connect(transport as Transport);
+            this.watchTransportClose(transport);
             const toolsResult = await this.mcp.listTools();
+            if (this.transport !== transport) {
+                throw new Error("MCP transport closed during connection setup");
+            }
 
             this.tools = toolsResult.tools;
             this.serverType = serverType;
@@ -110,6 +108,7 @@ export class MCPClient {
     }
 
     async processQuery(query: string): Promise<string> {
+        const gemini = this.getGemini();
         const systemInstruction = `You are a smart chatbot. You have access to the following MCP tools:
 ${this.tools.map((tool) => tool.name).join("\n")}`;
         const contents: Content[] = [{ role: "user", parts: [{ text: query }] }];
@@ -117,7 +116,7 @@ ${this.tools.map((tool) => tool.name).join("\n")}`;
         const finalText: string[] = [];
 
         while (true) {
-            const response = await this.gemini.models.generateContent({
+            const response = await gemini.models.generateContent({
                 model: this.model,
                 contents,
                 config: {
@@ -142,56 +141,88 @@ ${this.tools.map((tool) => tool.name).join("\n")}`;
         }
     }
 
-    async *streamQuery(query: string): AsyncGenerator<MCPStreamEvent> {
+    async *streamQuery(query: string, signal?: AbortSignal): AsyncGenerator<MCPStreamEvent> {
+        if (signal?.aborted) {
+            return;
+        }
+        const gemini = this.getGemini();
         const systemInstruction = `You are a smart chatbot. You have access to the following MCP tools:
 ${this.tools.map((tool) => tool.name).join("\n")}`;
         const contents: Content[] = [{ role: "user", parts: [{ text: query }] }];
         const functionDeclarations = this.tools.map(toGeminiFunctionDeclaration);
         const finalText: string[] = [];
+        let nextToolEventId = 0;
 
         while (true) {
-            const response = await this.gemini.models.generateContentStream({
+            if (signal?.aborted) {
+                return;
+            }
+            const response = await gemini.models.generateContentStream({
                 model: this.model,
                 contents,
                 config: {
                     systemInstruction,
+                    ...(signal ? { abortSignal: signal } : {}),
                     ...(functionDeclarations.length > 0 ? { tools: [{ functionDeclarations }] } : {}),
                 },
             });
             const functionCalls: FunctionCall[] = [];
-            let responseContent: Content | undefined;
+            const responseParts: Part[] = [];
+            let responseRole: Content["role"] | undefined;
 
             for await (const chunk of response) {
+                if (signal?.aborted) {
+                    return;
+                }
                 if (chunk.text) {
                     finalText.push(chunk.text);
                     yield { type: "assistant-text", text: chunk.text };
                 }
+                const chunkContent = chunk.candidates?.[0]?.content;
+                if (chunkContent?.parts?.length) {
+                    responseRole ??= chunkContent.role;
+                    responseParts.push(...chunkContent.parts);
+                }
                 if (chunk.functionCalls?.length) {
                     functionCalls.push(...chunk.functionCalls);
-                    responseContent = chunk.candidates?.[0]?.content;
                 }
             }
 
+            if (signal?.aborted) {
+                return;
+            }
             if (!functionCalls.length) {
                 yield { type: "complete", text: finalText.join("") };
                 return;
             }
-            if (responseContent) {
-                contents.push(responseContent);
+            if (responseParts.length) {
+                contents.push({ role: responseRole ?? "model", parts: responseParts });
             }
 
             const functionResponses: Part[] = [];
             for (const functionCall of functionCalls) {
+                if (signal?.aborted) {
+                    return;
+                }
                 if (!functionCall.name) {
                     throw new Error("Gemini returned a function call without a name");
                 }
-                const id = functionCall.id ?? functionCall.name;
+                const id = `tool-call-${nextToolEventId++}`;
                 const args = (functionCall.args ?? {}) as Record<string, unknown>;
                 yield { type: "tool-start", id, name: functionCall.name, args };
 
+                if (signal?.aborted) {
+                    return;
+                }
                 const start = performance.now();
-                const result = await this.mcp.callTool({ name: functionCall.name, arguments: args });
+                const result = await this.mcp.callTool(
+                    { name: functionCall.name, arguments: args },
+                    signal ? { signal } : undefined
+                );
                 const durationMs = Math.round(performance.now() - start);
+                if (signal?.aborted) {
+                    return;
+                }
                 yield {
                     type: "tool-result",
                     id,
@@ -207,9 +238,37 @@ ${this.tools.map((tool) => tool.name).join("\n")}`;
     }
 
     async cleanup(): Promise<void> {
-        if (this.transport) {
-            await this.mcp.close();
+        try {
+            if (this.transport) {
+                await this.mcp.close();
+            }
+        } finally {
+            this.resetConnection();
         }
+    }
+
+    private getGemini(): GoogleGenAI {
+        if (!this.gemini) {
+            const apiKey = process.env.GOOGLE_API_KEY;
+            if (!apiKey) {
+                throw new Error("GOOGLE_API_KEY is not set");
+            }
+            this.gemini = new GoogleGenAI({ apiKey });
+        }
+        return this.gemini;
+    }
+
+    private watchTransportClose(transport: MCPTransport): void {
+        const previousOnClose = transport.onclose;
+        transport.onclose = () => {
+            previousOnClose?.();
+            if (this.transport === transport) {
+                this.resetConnection();
+            }
+        };
+    }
+
+    private resetConnection(): void {
         this.transport = null;
         this.tools = [];
         this.serverType = null;

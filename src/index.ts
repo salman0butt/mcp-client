@@ -1,7 +1,16 @@
 import readline from "readline/promises";
+import { pathToFileURL } from "node:url";
 
 import { MCPClient } from "./mcpClient.js";
 
+export function inferServerType(serverPath: string): "local" | "remote" {
+    try {
+        new URL(serverPath);
+        return "remote";
+    } catch {
+        return "local";
+    }
+}
 
 async function main() {
     if (process.argv.length < 3) {
@@ -10,7 +19,7 @@ async function main() {
     }
     const mcpClient = new MCPClient();
     try {
-        await mcpClient.connectToServer(process.argv[2], 'remote');
+        await mcpClient.connectToServer(process.argv[2], inferServerType(process.argv[2]));
         const rl = readline.createInterface({
             input: process.stdin,
             output: process.stdout,
@@ -36,4 +45,6 @@ async function main() {
     }
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    void main();
+}

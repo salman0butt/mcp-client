@@ -32,6 +32,10 @@ streams chat responses from `POST /api/chat` as server-sent events. The
 disconnected chat response is HTTP 409; it does not invoke Gemini or an MCP
 server.
 
+Set `GOOGLE_API_KEY` to use live CLI or API chat. The API can still start
+without it, and health, status, and disconnected-chat checks remain available
+until a live chat request is made.
+
 Run the browser client in a second terminal:
 
 ```bash

@@ -32,7 +32,12 @@ export async function parseSseStream(
       return;
     }
 
-    onEvent({ type: eventName, ...JSON.parse(data.join("\n")) } as ApiStreamEvent);
+    const payload: unknown = JSON.parse(data.join("\n"));
+    if (!isRecord(payload)) {
+      throw new Error("SSE payload must be a JSON object");
+    }
+
+    onEvent({ ...payload, type: eventName } as ApiStreamEvent);
   };
 
   const flushCompleteBlocks = () => {
@@ -65,4 +70,8 @@ export async function parseSseStream(
   } finally {
     reader.releaseLock();
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
