@@ -86,12 +86,11 @@ From the repository root:
 bun test
 bun run build
 cd client
-bun test
+bun run test
 bun run typecheck
 bun run build
 ```
 
-The root suite is discovered by Bun. The client suite is run through its
-configured `bun run test` script (`vitest run`) because the direct Bun runner does
-not discover the repository's `*.vitest.ts` and `*.vitest.tsx` files selected by
-`client/vitest.config.ts`.
+The root suite is discovered by Bun. Use the configured `bun run test` Vitest
+script for the client because direct Bun discovery misses the repository's
+`*.vitest.ts` and `*.vitest.tsx` filenames.
