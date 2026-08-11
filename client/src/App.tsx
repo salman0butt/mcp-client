@@ -57,6 +57,7 @@ export default function App() {
   const [connectionError, setConnectionError] = useState<ConnectionError | null>(null);
   const [isResponding, setIsResponding] = useState(false);
   const conversationGeneration = useRef(0);
+  const connectionRequestGeneration = useRef(0);
   const messages = activeConversationId
     ? (conversationThreads[activeConversationId] ?? [])
     : newChatMessages;
@@ -66,17 +67,18 @@ export default function App() {
 
   useEffect(() => {
     let isCurrent = true;
+    const hydrationGeneration = connectionRequestGeneration.current;
 
     getStatus()
       .then((status) => {
-        if (!isCurrent) return;
+        if (!isCurrent || hydrationGeneration !== connectionRequestGeneration.current) return;
         setApiStatus(status);
         if (status.serverType && status.serverPath) {
           setConnectionDraft({ serverType: status.serverType, serverPath: status.serverPath });
         }
       })
       .catch(() => {
-        if (isCurrent) {
+        if (isCurrent && hydrationGeneration === connectionRequestGeneration.current) {
           setConnectionError({ message: "API unavailable — start the API server to connect." });
         }
       });
@@ -92,6 +94,7 @@ export default function App() {
       return;
     }
 
+    connectionRequestGeneration.current += 1;
     setIsConnecting(true);
     setConnectionError(null);
     try {
@@ -112,6 +115,7 @@ export default function App() {
   };
 
   const handleDisconnect = async () => {
+    connectionRequestGeneration.current += 1;
     setIsConnecting(true);
     setConnectionError(null);
     try {

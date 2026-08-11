@@ -272,6 +272,31 @@ describe("live MCP connection", () => {
     });
   });
 
+  test("keeps a completed connection when the initial status request resolves late", async () => {
+    useMediaPreferences({ desktop: true });
+    const user = userEvent.setup();
+    let resolveInitialStatus: (status: typeof disconnectedStatus) => void = () => undefined;
+    const initialStatus = new Promise<typeof disconnectedStatus>((resolve) => {
+      resolveInitialStatus = resolve;
+    });
+    vi.mocked(getStatus).mockReturnValue(initialStatus);
+
+    render(<App />);
+
+    await user.selectOptions(screen.getByLabelText("Transport"), "remote");
+    await user.type(screen.getByLabelText("Server path"), "https://mcp.example.com");
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(screen.getByText("Example MCP")).toBeInTheDocument());
+
+    await act(async () => {
+      resolveInitialStatus(disconnectedStatus);
+    });
+
+    expect(screen.getByText("Example MCP")).toBeInTheDocument();
+    expect(screen.getByText("https://mcp.example.com")).toBeInTheDocument();
+  });
+
   test("disconnects without removing the seeded conversation", async () => {
     useMediaPreferences({ desktop: true });
     vi.mocked(getStatus).mockResolvedValue(connectedStatus);
