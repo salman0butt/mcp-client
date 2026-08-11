@@ -4,6 +4,9 @@ import { pathToFileURL } from "node:url";
 import { MCPClient } from "./mcpClient.js";
 
 export function inferServerType(serverPath: string): "local" | "remote" {
+    if (/^[a-zA-Z]:[\\/]/.test(serverPath)) {
+        return "local";
+    }
     try {
         new URL(serverPath);
         return "remote";

@@ -85,14 +85,17 @@ export function createApiServer(client: MCPClient): http.Server {
                     throw new RequestError(409, "MCP server is not connected");
                 }
 
+                const abortController = new AbortController();
+                const abortOnResponseClose = () => abortController.abort();
+                const abortOnSocketClose = () => abortController.abort();
+                const responseSocket = response.socket;
+                response.once("close", abortOnResponseClose);
+                responseSocket?.once("close", abortOnSocketClose);
                 response.writeHead(200, {
                     "Content-Type": "text/event-stream",
                     "Cache-Control": "no-cache",
                     Connection: "keep-alive",
                 });
-                const abortController = new AbortController();
-                const abortOnResponseClose = () => abortController.abort();
-                response.once("close", abortOnResponseClose);
                 try {
                     for await (const event of client.streamQuery(message, abortController.signal)) {
                         if (abortController.signal.aborted) {
@@ -106,6 +109,7 @@ export function createApiServer(client: MCPClient): http.Server {
                     }
                 } finally {
                     response.off("close", abortOnResponseClose);
+                    responseSocket?.off("close", abortOnSocketClose);
                     if (!response.writableEnded) {
                         response.end();
                     }

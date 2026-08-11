@@ -216,6 +216,62 @@ test("chat turns an un-aborted stream failure into an error event", async () => 
     expect(await response.text()).toBe("event: error\ndata: {\"message\":\"Chat stream failed\"}\n\n");
 });
 
+test("canceling an HTTP chat response aborts the server-side stream", () => {
+    const build = Bun.spawnSync({
+        cmd: [process.execPath, "run", "build"],
+        cwd: process.cwd(),
+        stdout: "pipe",
+        stderr: "pipe",
+    });
+    expect(build.exitCode).toBe(0);
+
+    const node = Bun.which("node");
+    if (!node) {
+        throw new Error("Expected Node.js to run the API integration test");
+    }
+    const result = Bun.spawnSync({
+        cmd: [node, "--input-type=module", "-e", `
+import * as net from "node:net";
+import { createApiServer } from "./dist/src/api.js";
+
+let resolveAbort;
+const streamAborted = new Promise((resolve) => { resolveAbort = resolve; });
+const client = {
+    getStatus: () => ({ connected: true, serverType: null, serverPath: null, serverName: null, transport: null, model: "test", tools: [] }),
+    streamQuery: async function* (_message, signal) {
+        if (!signal) throw new Error("Expected an API abort signal");
+        yield { type: "assistant-text", text: "hello" };
+        if (signal.aborted) resolveAbort();
+        else signal.addEventListener("abort", resolveAbort, { once: true });
+        await streamAborted;
+    },
+};
+const server = createApiServer(client);
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const address = server.address();
+if (!address || typeof address === "string") throw new Error("Expected a TCP address");
+const body = JSON.stringify({ message: "hello" });
+const socket = net.connect(address.port, "127.0.0.1");
+socket.on("connect", () => socket.write("POST /api/chat HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nContent-Type: application/json\\r\\nContent-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body));
+await new Promise((resolve, reject) => {
+    socket.once("data", () => { socket.destroy(); resolve(); });
+    socket.once("error", reject);
+});
+const timeout = setTimeout(() => process.exit(1), 500);
+await streamAborted;
+clearTimeout(timeout);
+await new Promise((resolve) => server.close(resolve));
+console.log("aborted");
+`],
+        cwd: process.cwd(),
+        stdout: "pipe",
+        stderr: "pipe",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(new TextDecoder().decode(result.stdout).trim()).toBe("aborted");
+});
+
 test("formats a named server-sent event with JSON data and a blank line", () => {
     expect(formatSseEvent("assistant-text", { text: "hi" })).toBe(
         "event: assistant-text\ndata: {\"text\":\"hi\"}\n\n"

@@ -8,6 +8,8 @@ test("infers a local script argument and an absolute URL argument", async () => 
         const inferServerType = module.inferServerType as ((serverPath: string) => string) | undefined;
 
         expect(inferServerType?.("/tmp/server.py")).toBe("local");
+        expect(inferServerType?.("C:\\mcp\\server.py")).toBe("local");
+        expect(inferServerType?.("D:\\tools\\server.js")).toBe("local");
         expect(inferServerType?.("https://mcp.example.test/stream")).toBe("remote");
     } finally {
         process.argv = originalArgv;
