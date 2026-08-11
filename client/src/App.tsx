@@ -7,15 +7,19 @@ import { ConversationView } from "./components/ConversationView";
 import { Inspector } from "./components/Inspector";
 import { Sidebar } from "./components/Sidebar";
 import {
-  availableTools,
-  initialConversationThreads,
-  recentConversations,
-  serverInfo,
+  disconnectedServerInfo,
   serverInfoFromApiStatus,
   serverToolsFromApiStatus,
 } from "./data";
 import { useMediaQuery } from "./hooks/useMediaQuery";
-import type { ApiStatus, ConnectionDraft, ConnectionError, Message, ToolCall } from "./types";
+import type {
+  ApiStatus,
+  ConnectionDraft,
+  ConnectionError,
+  Conversation,
+  Message,
+  ToolCall,
+} from "./types";
 
 const disconnectedStatus: ApiStatus = {
   connected: false,
@@ -23,7 +27,7 @@ const disconnectedStatus: ApiStatus = {
   serverPath: null,
   serverName: null,
   transport: null,
-  model: "gemini-2.5-flash",
+  model: "Not available",
   tools: [],
 };
 
@@ -50,13 +54,30 @@ const serializePayload = (payload: unknown) => {
   }
 };
 
+function summarizeConversations(threads: Record<string, Message[]>): Conversation[] {
+  const tones: Conversation["tone"][] = ["orange", "blue", "green"];
+
+  return Object.entries(threads)
+    .reverse()
+    .map(([id, messages], index) => {
+      const firstUserMessage = messages.find((message) => message.role === "user");
+      const latestMessage = messages[messages.length - 1];
+      const title = firstUserMessage?.content.trim() || "New conversation";
+
+      return {
+        id,
+        title: title.length > 42 ? `${title.slice(0, 42)}…` : title,
+        preview: latestMessage?.content || "Waiting for a response…",
+        time: latestMessage?.timestamp ?? "Now",
+        tone: tones[index % tones.length],
+      };
+    });
+}
+
 export default function App() {
   const isDesktop = useMediaQuery("(min-width: 1280px)");
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    recentConversations[0]?.id ?? null,
-  );
-  const [conversationThreads, setConversationThreads] = useState(initialConversationThreads);
-  const [newChatMessages, setNewChatMessages] = useState<Message[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [conversationThreads, setConversationThreads] = useState<Record<string, Message[]>>({});
   const [draft, setDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showInspector, setShowInspector] = useState(isDesktop);
@@ -69,12 +90,10 @@ export default function App() {
   const conversationGeneration = useRef(0);
   const connectionRequestGeneration = useRef(0);
   const chatAbortController = useRef<AbortController | null>(null);
-  const messages = activeConversationId
-    ? (conversationThreads[activeConversationId] ?? [])
-    : newChatMessages;
+  const messages = activeConversationId ? (conversationThreads[activeConversationId] ?? []) : [];
   const isConnected = apiStatus.connected;
-  const inspectorServerInfo = isConnected ? serverInfoFromApiStatus(apiStatus) : serverInfo;
-  const inspectorTools = isConnected ? serverToolsFromApiStatus(apiStatus) : availableTools;
+  const inspectorServerInfo = isConnected ? serverInfoFromApiStatus(apiStatus) : disconnectedServerInfo;
+  const inspectorTools = isConnected ? serverToolsFromApiStatus(apiStatus) : [];
 
   useEffect(() => {
     let isCurrent = true;
@@ -140,31 +159,28 @@ export default function App() {
     }
   };
 
+  const conversations = useMemo(() => summarizeConversations(conversationThreads), [conversationThreads]);
+
   const filteredConversations = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return normalizedQuery
-      ? recentConversations.filter((conversation) =>
+      ? conversations.filter((conversation) =>
           `${conversation.title} ${conversation.preview}`
             .toLowerCase()
             .includes(normalizedQuery),
         )
-      : recentConversations;
-  }, [searchQuery]);
+      : conversations;
+  }, [conversations, searchQuery]);
 
   const updateMessages = (
-    conversationId: string | null,
+    conversationId: string,
     update: (currentMessages: Message[]) => Message[],
   ) => {
-    if (conversationId) {
-      setConversationThreads((currentThreads) => ({
-        ...currentThreads,
-        [conversationId]: update(currentThreads[conversationId] ?? []),
-      }));
-      return;
-    }
-
-    setNewChatMessages(update);
+    setConversationThreads((currentThreads) => ({
+      ...currentThreads,
+      [conversationId]: update(currentThreads[conversationId] ?? []),
+    }));
   };
 
   const handleSend = () => {
@@ -176,7 +192,7 @@ export default function App() {
 
     const timestamp = currentTime();
     const requestGeneration = conversationGeneration.current;
-    const requestConversationId = activeConversationId;
+    const requestConversationId = activeConversationId ?? createId("conversation");
     const assistantMessageId = createId("message");
     const abortController = new AbortController();
     chatAbortController.current?.abort();
@@ -221,6 +237,7 @@ export default function App() {
         timestamp,
       },
     ]);
+    setActiveConversationId(requestConversationId);
     setDraft("");
     setIsResponding(true);
 
@@ -298,7 +315,6 @@ export default function App() {
     chatAbortController.current?.abort();
     chatAbortController.current = null;
     setActiveConversationId(null);
-    setNewChatMessages([]);
     setDraft("");
     setIsResponding(false);
   };

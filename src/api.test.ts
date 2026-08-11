@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import type http from "node:http";
 
-import { createApiServer, formatSseEvent } from "./api.js";
+import { createApiServer, formatSseEvent, resolveApiPort } from "./api.js";
 import type { MCPClient, MCPConnectionStatus, MCPStreamEvent } from "./mcpClient.js";
 
 const disconnectedStatus: MCPConnectionStatus = {
@@ -47,6 +47,12 @@ test("health returns an ok response without a connection", async () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
+});
+
+test("uses a non-conflicting API default port and accepts valid overrides", () => {
+    expect(resolveApiPort(undefined)).toBe(8788);
+    expect(resolveApiPort("8790")).toBe(8790);
+    expect(resolveApiPort("0")).toBe(8788);
 });
 
 test("accepts both Vite loopback development origins", async () => {

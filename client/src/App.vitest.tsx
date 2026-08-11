@@ -125,16 +125,15 @@ describe("responsive workspace", () => {
     expect(toggle).toHaveFocus();
   });
 
-  test("closes the narrow drawer after loading a selected conversation", async () => {
+  test("closes the narrow drawer after starting a new conversation", async () => {
     useMediaPreferences({ narrow: true });
     const user = userEvent.setup();
 
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Open navigation drawer" }));
-    await user.click(screen.getByRole("button", { name: /Release notes review/ }));
+    await user.click(screen.getByRole("button", { name: "New chat" }));
 
-    expect(screen.getByText(/August release includes/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open navigation drawer" })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -143,22 +142,28 @@ describe("responsive workspace", () => {
 });
 
 describe("conversation state", () => {
-  test("loads local threads and clears the selection into a designed new-chat state", async () => {
+  test("creates a conversation from a live response and clears the selection for a new chat", async () => {
     useMediaPreferences({ desktop: true });
+    vi.mocked(getStatus).mockResolvedValue(connectedStatus);
+    vi.mocked(streamChat).mockImplementation((_message, handlers) => {
+      handlers.onComplete("Live MCP response");
+      return Promise.resolve();
+    });
     const user = userEvent.setup();
 
     render(<App />);
 
-    const releaseNotes = screen.getByRole("button", { name: /Release notes review/ });
-    await user.click(releaseNotes);
+    await user.type(screen.getByLabelText("Message"), "What is 2 + 2?");
+    await user.click(screen.getByRole("button", { name: "Send message" }));
 
-    expect(releaseNotes).toHaveAttribute("aria-current", "page");
-    expect(screen.getByText(/August release includes/)).toBeInTheDocument();
+    expect((await screen.findAllByText("Live MCP response")).length).toBeGreaterThan(0);
+    const liveConversation = screen.getByRole("button", { name: /What is 2 \+ 2\?/ });
+    expect(liveConversation).toHaveAttribute("aria-current", "page");
 
     await user.click(screen.getByRole("button", { name: "New chat" }));
 
     expect(screen.getByRole("heading", { name: "Start a new MCP conversation" })).toBeInTheDocument();
-    expect(releaseNotes).not.toHaveAttribute("aria-current");
+    expect(liveConversation).not.toHaveAttribute("aria-current");
   });
 
   test("does not apply stale stream events after switching threads", async () => {
@@ -174,15 +179,15 @@ describe("conversation state", () => {
 
     fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Find launch feedback" } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.click(screen.getByRole("button", { name: /Release notes review/ }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "New chat" }));
 
     act(() => {
       handlers?.onAssistantText("This response arrived too late.");
     });
 
-    expect(screen.getByText(/August release includes/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Start a new MCP conversation" })).toBeInTheDocument();
     expect(screen.queryByText("This response arrived too late.")).not.toBeInTheDocument();
-    expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Waiting for the MCP response…")).not.toBeInTheDocument();
   });
 
   test("streams assistant text and preserves completed and failed tool cards", async () => {
@@ -203,7 +208,7 @@ describe("conversation state", () => {
     await act(async () => {
       handlers?.onAssistantText("I found ");
     });
-    expect(screen.getByText("I found")).toBeInTheDocument();
+    expect(screen.getByRole("log")).toHaveTextContent("I found");
 
     await act(async () => {
       handlers?.onToolStart({
@@ -240,7 +245,7 @@ describe("conversation state", () => {
       });
       handlers?.onAssistantText("matching items.");
     });
-    expect(screen.getByText("I found matching items.")).toBeInTheDocument();
+    expect(screen.getAllByText("I found matching items.", { exact: true }).length).toBeGreaterThan(0);
     const completedToolCard = screen.getByText("386ms").closest("section");
     const failedToolCard = screen.getByText("91ms").closest("section");
     expect(completedToolCard).not.toBeNull();
@@ -259,7 +264,7 @@ describe("conversation state", () => {
     await act(async () => {
       handlers?.onComplete("I found matching items.");
     });
-    expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Waiting for the MCP response…")).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Message"), "Ask another question");
     expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   });
@@ -282,19 +287,19 @@ describe("conversation state", () => {
       handlers?.onError("The MCP server could not complete the request.");
     });
 
-    expect(screen.getByText("The MCP server could not complete the request.")).toBeInTheDocument();
-    expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
+    expect(screen.getAllByText("The MCP server could not complete the request.", { exact: true }).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Waiting for the MCP response…")).not.toBeInTheDocument();
 
     vi.mocked(streamChat).mockRejectedValueOnce(new Error("Connection lost while streaming."));
     await user.clear(screen.getByLabelText("Message"));
     await user.type(screen.getByLabelText("Message"), "Try again");
     await user.click(screen.getByRole("button", { name: "Send message" }));
 
-    expect(await screen.findByText("Connection lost while streaming.")).toBeInTheDocument();
-    expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
+    expect((await screen.findAllByText("Connection lost while streaming.", { exact: true })).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Waiting for the MCP response…")).not.toBeInTheDocument();
   });
 
-  test("keeps demo conversations visible and explains that sending requires a connection", async () => {
+  test("starts with an empty live conversation and requires a connection", async () => {
     useMediaPreferences({ desktop: true });
     const user = userEvent.setup();
 
@@ -303,7 +308,8 @@ describe("conversation state", () => {
     await user.type(screen.getByLabelText("Message"), "Find launch feedback");
 
     expect(screen.getByText("Connect to an MCP server to send a message.")).toBeInTheDocument();
-    expect(screen.getByText(/I found 18 recent feedback items/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Start a new MCP conversation" })).toBeInTheDocument();
+    expect(screen.queryByText(/I found 18 recent feedback items/)).not.toBeInTheDocument();
     expect(streamChat).not.toHaveBeenCalled();
   });
 });
@@ -372,13 +378,13 @@ describe("live MCP connection", () => {
     expect(screen.getByText("Look up a customer by account ID.")).toBeInTheDocument();
   });
 
-  test("keeps demo content available and reports an unavailable API", async () => {
+  test("reports an unavailable API without inventing conversation content", async () => {
     useMediaPreferences({ desktop: true });
     vi.mocked(getStatus).mockRejectedValue(new Error("Network failed"));
 
     render(<App />);
 
-    expect(screen.getByText(/I found 18 recent feedback items/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Start a new MCP conversation" })).toBeInTheDocument();
     expect(
       await screen.findByText("API unavailable — start the API server to connect."),
     ).toBeInTheDocument();
@@ -427,7 +433,7 @@ describe("live MCP connection", () => {
     expect(screen.getByText("https://mcp.example.com")).toBeInTheDocument();
   });
 
-  test("disconnects without removing the seeded conversation", async () => {
+  test("disconnects without inventing a conversation", async () => {
     useMediaPreferences({ desktop: true });
     vi.mocked(getStatus).mockResolvedValue(connectedStatus);
     const user = userEvent.setup();
@@ -436,8 +442,8 @@ describe("live MCP connection", () => {
 
     await user.click(await screen.findByRole("button", { name: "Disconnect" }));
 
-    await waitFor(() => expect(screen.getAllByText("Disconnected")).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByText("Disconnected", { exact: true }).length).toBeGreaterThan(0));
     expect(disconnect).toHaveBeenCalledOnce();
-    expect(screen.getByText(/I found 18 recent feedback items/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Start a new MCP conversation" })).toBeInTheDocument();
   });
 });

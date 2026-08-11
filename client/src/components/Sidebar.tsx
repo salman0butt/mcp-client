@@ -133,9 +133,9 @@ export function Sidebar({
         />
       </label>
 
-      <nav className="mt-6 min-h-0 flex-1 overflow-y-auto" aria-label="Recent conversations">
+      <nav className="mt-6 min-h-0 flex-1 overflow-y-auto" aria-label="Conversations">
         <p className="px-2 pb-2 text-xs font-medium uppercase tracking-[0.14em] text-[var(--color-taupe)]">
-          Recent
+          Conversations
         </p>
         {conversations.length ? (
           <ul className="space-y-1">
@@ -184,7 +184,7 @@ export function Sidebar({
             })}
           </ul>
         ) : (
-          <p className="px-2 py-4 text-sm text-[var(--color-taupe)]">No conversations found.</p>
+          <p className="px-2 py-4 text-sm text-[var(--color-taupe)]">No conversations yet.</p>
         )}
       </nav>
 

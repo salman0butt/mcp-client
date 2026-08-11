@@ -1,5 +1,5 @@
 import { useEffect, type AnimationEvent, type FormEvent } from "react";
-import { Activity, CheckCircle2, Clock3, Server, WifiOff, Wrench, X } from "lucide-react";
+import { Server, WifiOff, Wrench, X } from "lucide-react";
 import type { ApiStatus, ConnectionDraft, ConnectionError, ServerInfo, ServerTool } from "../types";
 
 type InspectorProps = {
@@ -17,12 +17,6 @@ type InspectorProps = {
   onRequestClose: () => void;
   onExited: () => void;
 };
-
-const recentActivity = [
-  { label: "Connected to server", time: "10:42 AM", Icon: CheckCircle2, className: "text-emerald-400" },
-  { label: "Tool catalog synchronized", time: "10:41 AM", Icon: Activity, className: "text-[var(--color-terracotta)]" },
-  { label: "stdio transport ready", time: "10:40 AM", Icon: Clock3, className: "text-[var(--color-taupe)]" },
-] as const;
 
 export function Inspector({
   isConnected,
@@ -174,18 +168,6 @@ export function Inspector({
           </ul>
         </section>
 
-        <section aria-labelledby="activity-heading">
-          <h2 id="activity-heading" className="text-sm font-semibold text-[var(--color-cream)]">Recent activity</h2>
-          <ul className="mt-3 space-y-3 border-l border-[var(--color-border)] pl-4">
-            {recentActivity.map(({ label, time, Icon, className }) => (
-              <li key={label} className="relative flex gap-2 text-xs">
-                <Icon aria-hidden="true" className={`absolute -left-[1.57rem] top-0 size-4 bg-[var(--color-charcoal)] ${className}`} />
-                <span className="min-w-0 flex-1 text-[var(--color-taupe)]">{label}</span>
-                <time className="shrink-0 text-[var(--color-taupe)]">{time}</time>
-              </li>
-            ))}
-          </ul>
-        </section>
       </div>
     </aside>
   );

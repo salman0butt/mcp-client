@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { MessageSquareText, Search, Sparkles, Wrench } from "lucide-react";
+import { Calculator, MessageSquareText, Sparkles, Wrench } from "lucide-react";
 import type { Message } from "../types";
 import { MessageBubble } from "./MessageBubble";
 
@@ -44,7 +44,7 @@ export function ConversationView({ messages, isResponding }: ConversationViewPro
                 aria-hidden="true"
                 className="size-2 animate-pulse rounded-full bg-[var(--color-terracotta)]"
               />
-              Searching feedback…
+              Waiting for the MCP response…
             </div>
           )}
         </div>
@@ -56,9 +56,9 @@ export function ConversationView({ messages, isResponding }: ConversationViewPro
 
 function ConversationWelcome() {
   const prompts = [
-    { Icon: Search, text: "Search recent feedback" },
+    { Icon: MessageSquareText, text: "Ask the connected MCP server" },
     { Icon: Wrench, text: "Explore available MCP tools" },
-    { Icon: MessageSquareText, text: "Summarize a project thread" },
+    { Icon: Calculator, text: "Run an MCP calculation" },
   ] as const;
 
   return (

@@ -4,3 +4,7 @@ client/node_modules/
 client/dist/
 .superpowers/
 .worktrees/
+docs/
+.env
+.env.*
+!.env.example
