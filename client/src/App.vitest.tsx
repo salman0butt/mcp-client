@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import App from "./App";
-import { connect, disconnect, getStatus } from "./api/client";
+import { connect, disconnect, getStatus, streamChat } from "./api/client";
+import type { StreamHandlers } from "./api/types";
 import { ConversationView } from "./components/ConversationView";
 import type { Message } from "./types";
 
@@ -10,6 +11,7 @@ vi.mock("./api/client", () => ({
   getStatus: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
+  streamChat: vi.fn(),
 }));
 
 const disconnectedStatus = {
@@ -80,6 +82,7 @@ beforeEach(() => {
   vi.mocked(getStatus).mockResolvedValue(disconnectedStatus);
   vi.mocked(connect).mockResolvedValue(connectedStatus);
   vi.mocked(disconnect).mockResolvedValue(disconnectedStatus);
+  vi.mocked(streamChat).mockResolvedValue(undefined);
 });
 
 describe("responsive workspace", () => {
@@ -158,9 +161,14 @@ describe("conversation state", () => {
     expect(releaseNotes).not.toHaveAttribute("aria-current");
   });
 
-  test("does not append a stale mock response after switching threads", async () => {
+  test("does not apply stale stream events after switching threads", async () => {
     useMediaPreferences({ desktop: true });
-    vi.useFakeTimers();
+    vi.mocked(getStatus).mockResolvedValue(connectedStatus);
+    let handlers: StreamHandlers | undefined;
+    vi.mocked(streamChat).mockImplementation((_message, streamHandlers) => {
+      handlers = streamHandlers;
+      return new Promise(() => undefined);
+    });
 
     render(<App />);
 
@@ -169,12 +177,113 @@ describe("conversation state", () => {
     fireEvent.click(screen.getByRole("button", { name: /Release notes review/ }));
 
     act(() => {
-      vi.advanceTimersByTime(600);
+      handlers?.onAssistantText("This response arrived too late.");
     });
 
     expect(screen.getByText(/August release includes/)).toBeInTheDocument();
-    expect(screen.queryByText(/most relevant results for your request/)).not.toBeInTheDocument();
+    expect(screen.queryByText("This response arrived too late.")).not.toBeInTheDocument();
     expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
+  });
+
+  test("streams assistant text and updates a live tool card", async () => {
+    useMediaPreferences({ desktop: true });
+    vi.mocked(getStatus).mockResolvedValue(connectedStatus);
+    const user = userEvent.setup();
+    let handlers: StreamHandlers | undefined;
+    vi.mocked(streamChat).mockImplementation((_message, streamHandlers) => {
+      handlers = streamHandlers;
+      return new Promise(() => undefined);
+    });
+
+    render(<App />);
+
+    await user.type(screen.getByLabelText("Message"), "Find launch feedback");
+    await user.click(screen.getByRole("button", { name: "Send message" }));
+
+    await act(async () => {
+      handlers?.onAssistantText("I found ");
+    });
+    expect(screen.getByText("I found")).toBeInTheDocument();
+
+    await act(async () => {
+      handlers?.onToolStart({
+        type: "tool-start",
+        id: "tool-1",
+        name: "search_feedback",
+        args: { query: "launch", limit: 12 },
+      });
+    });
+    expect(screen.getByText("Running")).toBeInTheDocument();
+
+    await act(async () => {
+      handlers?.onToolResult({
+        type: "tool-result",
+        id: "tool-1",
+        name: "search_feedback",
+        content: [{ id: "feedback-1", title: "Launch notes" }],
+        isError: false,
+        durationMs: 386,
+      });
+      handlers?.onAssistantText("matching items.");
+    });
+    expect(screen.getByText("I found matching items.")).toBeInTheDocument();
+    const toolCard = screen.getByText("386ms").closest("section");
+    expect(toolCard).not.toBeNull();
+    expect(within(toolCard as HTMLElement).getByText("Completed")).toBeInTheDocument();
+
+    await user.click(within(toolCard as HTMLElement).getByRole("button", { name: /search_feedback/ }));
+    expect(within(toolCard as HTMLElement).getByText(/"query": "launch"/)).toBeInTheDocument();
+    expect(within(toolCard as HTMLElement).getByText(/"title": "Launch notes"/)).toBeInTheDocument();
+
+    await act(async () => {
+      handlers?.onComplete("I found matching items.");
+    });
+    expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Message"), "Ask another question");
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+  });
+
+  test("renders stream errors and connection losses without leaving a response pending", async () => {
+    useMediaPreferences({ desktop: true });
+    vi.mocked(getStatus).mockResolvedValue(connectedStatus);
+    const user = userEvent.setup();
+    let handlers: StreamHandlers | undefined;
+    vi.mocked(streamChat).mockImplementationOnce((_message, streamHandlers) => {
+      handlers = streamHandlers;
+      return new Promise(() => undefined);
+    });
+
+    render(<App />);
+
+    await user.type(screen.getByLabelText("Message"), "Find launch feedback");
+    await user.click(screen.getByRole("button", { name: "Send message" }));
+    await act(async () => {
+      handlers?.onError("The MCP server could not complete the request.");
+    });
+
+    expect(screen.getByText("The MCP server could not complete the request.")).toBeInTheDocument();
+    expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
+
+    vi.mocked(streamChat).mockRejectedValueOnce(new Error("Connection lost while streaming."));
+    await user.clear(screen.getByLabelText("Message"));
+    await user.type(screen.getByLabelText("Message"), "Try again");
+    await user.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(await screen.findByText("Connection lost while streaming.")).toBeInTheDocument();
+    expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
+  });
+
+  test("keeps demo conversations visible and explains that sending requires a connection", async () => {
+    useMediaPreferences({ desktop: true });
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.type(screen.getByLabelText("Message"), "Find launch feedback");
+
+    expect(screen.getByText("Connect to an MCP server to send a message.")).toBeInTheDocument();
+    expect(screen.getByText(/I found 18 recent feedback items/)).toBeInTheDocument();
+    expect(streamChat).not.toHaveBeenCalled();
   });
 });
 

@@ -23,6 +23,7 @@ export function ConversationView({ messages, isResponding }: ConversationViewPro
   return (
     <section
       aria-label="Conversation"
+      aria-busy={isResponding}
       className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[var(--color-espresso)] px-4 py-6 sm:px-6"
     >
       <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">

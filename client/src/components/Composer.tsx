@@ -18,7 +18,7 @@ export function Composer({
   isConnected,
   model,
 }: ComposerProps) {
-  const canSubmit = Boolean(draft.trim()) && !isResponding;
+  const canSubmit = Boolean(draft.trim()) && !isResponding && isConnected;
 
   const submit = () => {
     if (canSubmit) {
@@ -44,6 +44,11 @@ export function Composer({
         className="mx-auto w-full max-w-3xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-charcoal)] p-3 shadow-lg shadow-black/10"
         onSubmit={handleSubmit}
       >
+        {!isConnected && (
+          <p className="mb-2 px-1 text-xs text-[var(--color-taupe)]" role="status">
+            Connect to an MCP server to send a message.
+          </p>
+        )}
         <label className="sr-only" htmlFor="composer-message">
           Message
         </label>

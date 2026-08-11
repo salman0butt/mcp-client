@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { connect, disconnect, getStatus } from "./api/client";
+import { connect, disconnect, getStatus, streamChat } from "./api/client";
+import type { StreamHandlers } from "./api/types";
 import { ChatHeader } from "./components/ChatHeader";
 import { Composer } from "./components/Composer";
 import { ConversationView } from "./components/ConversationView";
@@ -14,7 +15,7 @@ import {
   serverToolsFromApiStatus,
 } from "./data";
 import { useMediaQuery } from "./hooks/useMediaQuery";
-import type { ApiStatus, ConnectionDraft, ConnectionError, Message } from "./types";
+import type { ApiStatus, ConnectionDraft, ConnectionError, Message, ToolCall } from "./types";
 
 const disconnectedStatus: ApiStatus = {
   connected: false,
@@ -40,6 +41,15 @@ const currentTime = () =>
     minute: "2-digit",
   }).format(new Date());
 
+const serializePayload = (payload: unknown) => {
+  try {
+    const serialized = JSON.stringify(payload, null, 2);
+    return serialized ?? String(payload);
+  } catch {
+    return String(payload);
+  }
+};
+
 export default function App() {
   const isDesktop = useMediaQuery("(min-width: 1280px)");
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
@@ -58,6 +68,7 @@ export default function App() {
   const [isResponding, setIsResponding] = useState(false);
   const conversationGeneration = useRef(0);
   const connectionRequestGeneration = useRef(0);
+  const chatAbortController = useRef<AbortController | null>(null);
   const messages = activeConversationId
     ? (conversationThreads[activeConversationId] ?? [])
     : newChatMessages;
@@ -87,6 +98,8 @@ export default function App() {
       isCurrent = false;
     };
   }, []);
+
+  useEffect(() => () => chatAbortController.current?.abort(), []);
 
   const handleConnect = async () => {
     if (!connectionDraft.serverPath.trim()) {
@@ -157,13 +170,41 @@ export default function App() {
   const handleSend = () => {
     const content = draft.trim();
 
-    if (!content || isResponding) {
+    if (!content || isResponding || !isConnected) {
       return;
     }
 
     const timestamp = currentTime();
     const requestGeneration = conversationGeneration.current;
     const requestConversationId = activeConversationId;
+    const assistantMessageId = createId("message");
+    const abortController = new AbortController();
+    chatAbortController.current?.abort();
+    chatAbortController.current = abortController;
+
+    const isCurrentRequest = () =>
+      requestGeneration === conversationGeneration.current &&
+      chatAbortController.current === abortController;
+
+    const updateAssistantMessage = (update: (message: Message) => Message) => {
+      if (!isCurrentRequest()) return;
+
+      updateMessages(requestConversationId, (currentMessages) =>
+        currentMessages.map((message) =>
+          message.id === assistantMessageId ? update(message) : message,
+        ),
+      );
+    };
+
+    const finishWithError = (message: string) => {
+      updateAssistantMessage((assistantMessage) => ({
+        ...assistantMessage,
+        content: assistantMessage.content
+          ? `${assistantMessage.content}\n\n${message}`
+          : message,
+      }));
+      if (isCurrentRequest()) setIsResponding(false);
+    };
 
     updateMessages(requestConversationId, (currentMessages) => [
       ...currentMessages,
@@ -173,40 +214,81 @@ export default function App() {
         content,
         timestamp,
       },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        timestamp,
+      },
     ]);
     setDraft("");
     setIsResponding(true);
 
-    window.setTimeout(() => {
-      if (requestGeneration !== conversationGeneration.current) {
-        return;
-      }
+    const handlers: StreamHandlers = {
+      onAssistantText: (text) => {
+        updateAssistantMessage((assistantMessage) => ({
+          ...assistantMessage,
+          content: `${assistantMessage.content}${text}`,
+        }));
+      },
+      onToolStart: (event) => {
+        const toolCall: ToolCall = {
+          id: event.id,
+          name: event.name,
+          summary: `Running ${event.name}`,
+          status: "running",
+          duration: "",
+          input: serializePayload(event.args),
+          output: "",
+        };
+        updateAssistantMessage((assistantMessage) => ({ ...assistantMessage, toolCall }));
+      },
+      onToolResult: (event) => {
+        updateAssistantMessage((assistantMessage) => {
+          if (assistantMessage.toolCall?.id !== event.id) return assistantMessage;
 
-      updateMessages(requestConversationId, (currentMessages) => [
-        ...currentMessages,
-        {
-          id: createId("message"),
-          role: "assistant",
-          content:
-            "I searched the latest product feedback and found the most relevant results for your request.",
-          timestamp: currentTime(),
-          toolCall: {
-            id: createId("tool-call"),
-            name: "search_feedback",
-            summary: "Found 12 matching feedback items",
-            status: "success",
-            duration: "386ms",
-            input: `{\n  "query": ${JSON.stringify(content)},\n  "limit": 12\n}`,
-            output: '{\n  "count": 12,\n  "status": "success"\n}',
-          },
-        },
-      ]);
-      setIsResponding(false);
-    }, 600);
+          return {
+            ...assistantMessage,
+            toolCall: {
+              ...assistantMessage.toolCall,
+              summary: event.isError
+                ? `${event.name} returned an error`
+                : `${event.name} completed`,
+              status: event.isError ? "error" : "success",
+              duration: `${event.durationMs}ms`,
+              output: serializePayload(event.content),
+            },
+          };
+        });
+      },
+      onComplete: (text) => {
+        updateAssistantMessage((assistantMessage) => ({
+          ...assistantMessage,
+          content: text || assistantMessage.content,
+        }));
+        if (isCurrentRequest()) setIsResponding(false);
+      },
+      onError: finishWithError,
+    };
+
+    void streamChat(content, handlers, abortController.signal)
+      .catch((error) => {
+        if (!abortController.signal.aborted) {
+          finishWithError(error instanceof Error ? error.message : "Unable to stream the MCP response.");
+        }
+      })
+      .finally(() => {
+        if (isCurrentRequest()) {
+          setIsResponding(false);
+          chatAbortController.current = null;
+        }
+      });
   };
 
   const handleNewChat = () => {
     conversationGeneration.current += 1;
+    chatAbortController.current?.abort();
+    chatAbortController.current = null;
     setActiveConversationId(null);
     setNewChatMessages([]);
     setDraft("");
@@ -215,6 +297,8 @@ export default function App() {
 
   const handleSelectConversation = (conversationId: string) => {
     conversationGeneration.current += 1;
+    chatAbortController.current?.abort();
+    chatAbortController.current = null;
     setActiveConversationId(conversationId);
     setIsResponding(false);
   };
