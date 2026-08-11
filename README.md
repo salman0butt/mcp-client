@@ -71,6 +71,13 @@ Local paths must end in `.js` or `.py`; remote values must be absolute URLs.
 The API process owns the MCP connection, while the CLI remains available
 through `start:server`.
 
+## Student list example
+
+The screenshot below shows the client receiving a student list through the
+connected MCP server:
+
+![MCP client student list](assets/screenshots/students-list.jpg)
+
 ## Test with the included math MCP server
 
 The repository includes a dependency-free local MCP server at
