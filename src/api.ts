@@ -111,9 +111,9 @@ export function createApiApp(client: MCPClient): express.Express {
                 }
                 response.write(formatSseEvent(event.type, event));
             }
-        } catch {
+        } catch (error) {
             if (!abortController.signal.aborted && !response.destroyed) {
-                response.write(formatSseEvent("error", { message: "Chat stream failed" }));
+                response.write(formatSseEvent("error", { message: getErrorMessage(error) }));
             }
         } finally {
             response.off("close", abortOnResponseClose);
@@ -205,6 +205,10 @@ function requireJsonContentType(request: Request): void {
 
 function sendJson(response: Response, statusCode: number, payload: unknown): void {
     response.status(statusCode).type("application/json").send(payload);
+}
+
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error && error.message.trim() ? error.message : "Chat stream failed";
 }
 
 function normalizeRequestError(error: unknown): RequestError | null {

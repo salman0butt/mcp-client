@@ -5,9 +5,9 @@
   "private": true,
   "scripts": {
     "build": "tsc && chmod 755 dist/src/index.js",
-    "start:server": "node dist/src/index.js",
-    "start:api": "node dist/src/api.js",
-    "start:cli": "node dist/src/index.js"
+    "start:server": "bun --dns-result-order=ipv4first dist/src/index.js",
+    "start:api": "bun --dns-result-order=ipv4first dist/src/api.js",
+    "start:cli": "bun --dns-result-order=ipv4first dist/src/index.js"
   },
   "devDependencies": {
     "@types/bun": "latest",

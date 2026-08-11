@@ -206,7 +206,7 @@ test("chat streams service events and closes after completion", async () => {
     );
 });
 
-test("chat turns an un-aborted stream failure into an error event", async () => {
+test("chat turns an un-aborted stream failure into an actionable error event", async () => {
     const connectedStatus = { ...disconnectedStatus, connected: true };
     const client = createClient(connectedStatus);
     client.streamQuery = async function* () {
@@ -219,7 +219,7 @@ test("chat turns an un-aborted stream failure into an error event", async () => 
         body: JSON.stringify({ message: "hello" }),
     });
 
-    expect(await response.text()).toBe("event: error\ndata: {\"message\":\"Chat stream failed\"}\n\n");
+    expect(await response.text()).toBe("event: error\ndata: {\"message\":\"model failed\"}\n\n");
 });
 
 test("canceling an HTTP chat response aborts the server-side stream", () => {
