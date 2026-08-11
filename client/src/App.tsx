@@ -241,23 +241,31 @@ export default function App() {
           input: serializePayload(event.args),
           output: "",
         };
-        updateAssistantMessage((assistantMessage) => ({ ...assistantMessage, toolCall }));
+        updateAssistantMessage((assistantMessage) => ({
+          ...assistantMessage,
+          toolCalls: [...(assistantMessage.toolCalls ?? []), toolCall],
+        }));
       },
       onToolResult: (event) => {
         updateAssistantMessage((assistantMessage) => {
-          if (assistantMessage.toolCall?.id !== event.id) return assistantMessage;
+          const toolCall = assistantMessage.toolCalls?.find((call) => call.id === event.id);
+          if (!toolCall) return assistantMessage;
 
           return {
             ...assistantMessage,
-            toolCall: {
-              ...assistantMessage.toolCall,
-              summary: event.isError
-                ? `${event.name} returned an error`
-                : `${event.name} completed`,
-              status: event.isError ? "error" : "success",
-              duration: `${event.durationMs}ms`,
-              output: serializePayload(event.content),
-            },
+            toolCalls: assistantMessage.toolCalls?.map((call) =>
+              call.id === event.id
+                ? {
+                    ...call,
+                    summary: event.isError
+                      ? `${event.name} returned an error`
+                      : `${event.name} completed`,
+                    status: event.isError ? "error" : "success",
+                    duration: `${event.durationMs}ms`,
+                    output: serializePayload(event.content),
+                  }
+                : call,
+            ),
           };
         });
       },

@@ -8,6 +8,7 @@ type MessageBubbleProps = {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const toolCalls = message.toolCalls ?? (message.toolCall ? [message.toolCall] : []);
 
   return (
     <article className={isUser ? "ml-auto flex w-full max-w-xl flex-col items-end" : "flex w-full gap-3"}>
@@ -33,7 +34,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         >
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
-        {message.toolCall && <ToolCallCard toolCall={message.toolCall} />}
+        {toolCalls.map((toolCall) => (
+          <ToolCallCard key={toolCall.id} toolCall={toolCall} />
+        ))}
       </div>
     </article>
   );

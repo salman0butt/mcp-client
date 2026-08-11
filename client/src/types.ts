@@ -19,6 +19,7 @@ export interface Message {
   content: string;
   timestamp: string;
   toolCall?: ToolCall;
+  toolCalls?: ToolCall[];
 }
 
 export interface Conversation {

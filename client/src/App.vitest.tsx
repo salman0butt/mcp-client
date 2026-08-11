@@ -185,7 +185,7 @@ describe("conversation state", () => {
     expect(screen.queryByText("Searching feedback…")).not.toBeInTheDocument();
   });
 
-  test("streams assistant text and updates a live tool card", async () => {
+  test("streams assistant text and preserves completed and failed tool cards", async () => {
     useMediaPreferences({ desktop: true });
     vi.mocked(getStatus).mockResolvedValue(connectedStatus);
     const user = userEvent.setup();
@@ -216,6 +216,12 @@ describe("conversation state", () => {
     expect(screen.getByText("Running")).toBeInTheDocument();
 
     await act(async () => {
+      handlers?.onToolStart({
+        type: "tool-start",
+        id: "tool-2",
+        name: "lookup_customer",
+        args: { accountId: "customer-42" },
+      });
       handlers?.onToolResult({
         type: "tool-result",
         id: "tool-1",
@@ -224,16 +230,31 @@ describe("conversation state", () => {
         isError: false,
         durationMs: 386,
       });
+      handlers?.onToolResult({
+        type: "tool-result",
+        id: "tool-2",
+        name: "lookup_customer",
+        content: { message: "Customer record is unavailable." },
+        isError: true,
+        durationMs: 91,
+      });
       handlers?.onAssistantText("matching items.");
     });
     expect(screen.getByText("I found matching items.")).toBeInTheDocument();
-    const toolCard = screen.getByText("386ms").closest("section");
-    expect(toolCard).not.toBeNull();
-    expect(within(toolCard as HTMLElement).getByText("Completed")).toBeInTheDocument();
+    const completedToolCard = screen.getByText("386ms").closest("section");
+    const failedToolCard = screen.getByText("91ms").closest("section");
+    expect(completedToolCard).not.toBeNull();
+    expect(failedToolCard).not.toBeNull();
+    expect(within(completedToolCard as HTMLElement).getByText("Completed")).toBeInTheDocument();
+    expect(within(failedToolCard as HTMLElement).getByText("Failed")).toBeInTheDocument();
 
-    await user.click(within(toolCard as HTMLElement).getByRole("button", { name: /search_feedback/ }));
-    expect(within(toolCard as HTMLElement).getByText(/"query": "launch"/)).toBeInTheDocument();
-    expect(within(toolCard as HTMLElement).getByText(/"title": "Launch notes"/)).toBeInTheDocument();
+    await user.click(within(completedToolCard as HTMLElement).getByRole("button", { name: /search_feedback/ }));
+    expect(within(completedToolCard as HTMLElement).getByText(/"query": "launch"/)).toBeInTheDocument();
+    expect(within(completedToolCard as HTMLElement).getByText(/"title": "Launch notes"/)).toBeInTheDocument();
+
+    await user.click(within(failedToolCard as HTMLElement).getByRole("button", { name: /lookup_customer/ }));
+    expect(within(failedToolCard as HTMLElement).getByText(/"accountId": "customer-42"/)).toBeInTheDocument();
+    expect(within(failedToolCard as HTMLElement).getByText(/"Customer record is unavailable."/)).toBeInTheDocument();
 
     await act(async () => {
       handlers?.onComplete("I found matching items.");
